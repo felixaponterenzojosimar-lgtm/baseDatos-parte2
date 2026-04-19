@@ -7,6 +7,10 @@ from ..parser.ast_nodes import (
 )
 
 
+class ExecutionError(Exception):
+    pass
+
+
 class Executor:
     """
     Toma un nodo AST y lo ejecuta contra la base de datos.
@@ -17,6 +21,10 @@ class Executor:
         self.db = db
         self.stats = DiskStats()
 
+    # ------------------------------------------------------------------
+    # API pública
+    # ------------------------------------------------------------------
+
     def execute(self, node) -> dict:
         """
         Input:  node  cualquier nodo AST del parser
@@ -24,83 +32,127 @@ class Executor:
         Raises: ExecutionError si la operación falla
         """
         self.stats.reset()
+
         dispatch = {
-            CreateTableNode:        self._exec_create,
-            InsertNode:             self._exec_insert,
-            SelectEqualNode:        self._exec_select_equal,
-            SelectRangeNode:        self._exec_select_range,
-            SelectPointRadiusNode:  self._exec_select_point_radius,
-            SelectKNNNode:          self._exec_select_knn,
-            DeleteNode:             self._exec_delete,
+            CreateTableNode:       self._exec_create,
+            InsertNode:            self._exec_insert,
+            SelectEqualNode:       self._exec_select_equal,
+            SelectRangeNode:       self._exec_select_range,
+            SelectPointRadiusNode: self._exec_select_point_radius,
+            SelectKNNNode:         self._exec_select_knn,
+            DeleteNode:            self._exec_delete,
         }
         handler = dispatch.get(type(node))
         if handler is None:
             raise ExecutionError(f"Tipo de nodo desconocido: {type(node)}")
-        results = handler(node)
+
+        try:
+            results = handler(node)
+        except (KeyError, ValueError, NotSupportedError) as e:
+            raise ExecutionError(str(e)) from e
+
         return {"results": results, "stats": self.stats.snapshot()}
 
     # ------------------------------------------------------------------
-    # Handlers por tipo de nodo
+    # Handlers
     # ------------------------------------------------------------------
 
     def _exec_create(self, node: CreateTableNode) -> list:
         """
-        Input:  CreateTableNode
-        Output: []  (no retorna filas)
-        — Crea la tabla en db; carga CSV si from_file está presente.
+        Construye el Schema desde las columnas del parser y crea la tabla.
+        Si from_file está presente, carga el CSV.
         """
-        pass
+        schema, index_type = Database.schema_from_columns(node.columns)
+        self.db.create_table(
+            name=node.table_name,
+            schema=schema,
+            index_type=index_type,
+            from_file=node.from_file,
+        )
+        return []
 
     def _exec_insert(self, node: InsertNode) -> list:
         """
-        Input:  InsertNode
-        Output: []
-        — table.index.add(record)   ← polimorfismo
+        Mapea los valores posicionales a los campos del schema y llama add().
         """
-        pass
+        table = self.db.get_table(node.table_name)
+        fields = table.schema.fields
+
+        if len(node.values) != len(fields):
+            raise ExecutionError(
+                f"INSERT: se esperaban {len(fields)} valores, "
+                f"se recibieron {len(node.values)}"
+            )
+
+        record = {}
+        for field, value in zip(fields, node.values):
+            record[field.name] = self._cast_value(value, field)
+
+        table.index.add(record)
+        return []
 
     def _exec_select_equal(self, node: SelectEqualNode) -> list:
-        """
-        Input:  SelectEqualNode
-        Output: [dict] o []
-        — table.index.search(key)   ← polimorfismo
-        """
-        pass
+        """Búsqueda exacta por clave."""
+        table = self.db.get_table(node.table_name)
+        key = self._cast_key(node.value, table, node.column)
+        result = table.index.search(key)
+        return [result] if result is not None else []
 
     def _exec_select_range(self, node: SelectRangeNode) -> list:
-        """
-        Input:  SelectRangeNode
-        Output: list[dict]
-        — table.index.range_search(begin, end)   ← polimorfismo
-        """
-        pass
+        """Búsqueda por rango [begin, end]."""
+        table = self.db.get_table(node.table_name)
+        begin = self._cast_key(node.begin, table, node.column)
+        end = self._cast_key(node.end, table, node.column)
+        return table.index.range_search(begin, end)
 
     def _exec_select_point_radius(self, node: SelectPointRadiusNode) -> list:
-        """
-        Input:  SelectPointRadiusNode
-        Output: list[dict]
-        — Solo válido para RTree → table.index.range_search(point, radius)
-        Raises: ExecutionError si el índice no es RTree
-        """
-        pass
+        """Búsqueda espacial por radio. Solo válida para RTree."""
+        table = self.db.get_table(node.table_name)
+        if not isinstance(table.index, RTree):
+            raise ExecutionError(
+                f"La tabla '{node.table_name}' no usa un índice RTree"
+            )
+        return table.index.range_search(node.point, node.radius)
 
     def _exec_select_knn(self, node: SelectKNNNode) -> list:
-        """
-        Input:  SelectKNNNode
-        Output: list[dict] con k registros ordenados por distancia
-        — Solo válido para RTree → table.index.knn(point, k)
-        Raises: ExecutionError si el índice no es RTree
-        """
-        pass
+        """Búsqueda de k vecinos más cercanos. Solo válida para RTree."""
+        table = self.db.get_table(node.table_name)
+        if not isinstance(table.index, RTree):
+            raise ExecutionError(
+                f"La tabla '{node.table_name}' no usa un índice RTree"
+            )
+        return table.index.knn(node.point, node.k)
 
     def _exec_delete(self, node: DeleteNode) -> list:
-        """
-        Input:  DeleteNode
-        Output: []
-        — table.index.remove(key)   ← polimorfismo
-        """
-        pass
+        """Elimina el registro con la clave dada."""
+        table = self.db.get_table(node.table_name)
+        key = self._cast_key(node.value, table, node.column)
+        removed = table.index.remove(key)
+        return [{"deleted": removed}]
 
+    # ------------------------------------------------------------------
+    # Utilidades de casting
+    # ------------------------------------------------------------------
 
-class ExecutionError(Exception):
-    pass
+    def _cast_key(self, raw_value, table, column_name):
+        """Convierte el valor literal del parser al tipo Python del campo."""
+        try:
+            field = table.schema.get_field(column_name)
+        except KeyError:
+            raise ExecutionError(
+                f"Columna '{column_name}' no existe en '{table.name}'"
+            )
+        return self._cast_value(raw_value, field)
+
+    def _cast_value(self, value, field):
+        """Convierte value al tipo correcto del Field."""
+        from ..storage.schema import FieldType
+        if field.field_type == FieldType.INT:
+            return int(value)
+        if field.field_type == FieldType.FLOAT:
+            return float(value)
+        if field.field_type == FieldType.BOOL:
+            if isinstance(value, bool):
+                return value
+            return str(value).lower() in ("true", "1", "yes")
+        return str(value)   # VARCHAR

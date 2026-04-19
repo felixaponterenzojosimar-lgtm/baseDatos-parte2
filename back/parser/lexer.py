@@ -1,6 +1,7 @@
 from enum import Enum, auto
 
 
+
 class TokenType(Enum):
     # Palabras clave
     CREATE = auto();  TABLE = auto();   FROM = auto();    FILE = auto()
