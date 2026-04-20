@@ -7,7 +7,11 @@ from ..indexes import SequentialFile, ExtendibleHashing, BPlusTree, RTree
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 
 # Tipos SQL aceptados en CREATE TABLE
-_SQL_TYPES = {"INT", "FLOAT", "BOOL"}
+_SQL_TYPES = {
+    "INT", "INTEGER", "SMALLINT", "BIGINT",
+    "REAL", "DOUBLE PRECISION", "BOOLEAN",
+    "CHAR", "DATE", "TIME",
+}
 
 
 class Database:
@@ -179,15 +183,19 @@ class Database:
                 index_type = col["index"].lower()
                 primary_key = name
 
-            if sql_type == "INT":
+            if sql_type in {"INT", "INTEGER", "SMALLINT", "BIGINT"}:
                 fields.append(Field(name, FieldType.INT))
-            elif sql_type == "FLOAT":
+            elif sql_type in {"REAL", "DOUBLE PRECISION"}:
                 fields.append(Field(name, FieldType.FLOAT))
-            elif sql_type == "BOOL":
+            elif sql_type == "BOOLEAN":
                 fields.append(Field(name, FieldType.BOOL))
-            elif sql_type.startswith("VARCHAR"):
-                size = int(sql_type[8:-1])   # VARCHAR(50) → 50
+            elif sql_type.startswith("CHAR("):
+                size = int(sql_type[5:-1])
                 fields.append(Field(name, FieldType.VARCHAR, max_length=size))
+            elif sql_type == "DATE":
+                fields.append(Field(name, FieldType.VARCHAR, max_length=10))
+            elif sql_type == "TIME":
+                fields.append(Field(name, FieldType.VARCHAR, max_length=8))
             else:
                 raise ValueError(f"Tipo SQL desconocido: '{sql_type}'")
 

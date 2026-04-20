@@ -48,27 +48,18 @@ class Parser:
         """
         self._expect(TokenType.CREATE)
         self._expect(TokenType.TABLE)
-        name = self._expect(TokenType.IDENT).value
-        self._expect(TokenType.LPAREN)
+        name = self._expect(TokenType.IDENTIFIER).value
+        self._expect(TokenType.LEFT_PARENTHESIS)
 
         columns = []
         while True:
-            col_name = self._expect(TokenType.IDENT).value
-
-            # tipo puede ser INT, FLOAT, BOOL, VARCHAR — VARCHAR va seguido de (n)
-            col_type_tok = self._expect(TokenType.IDENT)
-            col_type = col_type_tok.value.upper()
-
-            if col_type == "VARCHAR":
-                self._expect(TokenType.LPAREN)
-                size = self._expect(TokenType.INTEGER).value
-                self._expect(TokenType.RPAREN)
-                col_type = f"VARCHAR({size})"
+            col_name = self._expect(TokenType.IDENTIFIER).value
+            col_type = self._read_column_type()
 
             index_type = None
             if self._peek().type == TokenType.INDEX:
                 self._advance()
-                index_type = self._expect(TokenType.IDENT).value.lower()
+                index_type = self._read_index_type()
 
             columns.append({"name": col_name, "type": col_type, "index": index_type})
 
@@ -77,13 +68,13 @@ class Parser:
             else:
                 break
 
-        self._expect(TokenType.RPAREN)
+        self._expect(TokenType.RIGHT_PARENTHESIS)
 
         from_file = None
         if self._peek().type == TokenType.FROM:
             self._advance()
             self._expect(TokenType.FILE)
-            from_file = self._expect(TokenType.STRING).value
+            from_file = self._expect(TokenType.STRING_LITERAL).value
 
         self._consume_optional(TokenType.SEMICOLON)
         return CreateTableNode(name, columns, from_file)
@@ -92,9 +83,9 @@ class Parser:
         """INSERT INTO <tabla> VALUES (<v1>, <v2>, ...)"""
         self._expect(TokenType.INSERT)
         self._expect(TokenType.INTO)
-        name = self._expect(TokenType.IDENT).value
+        name = self._expect(TokenType.IDENTIFIER).value
         self._expect(TokenType.VALUES)
-        self._expect(TokenType.LPAREN)
+        self._expect(TokenType.LEFT_PARENTHESIS)
 
         values = []
         while True:
@@ -104,7 +95,7 @@ class Parser:
             else:
                 break
 
-        self._expect(TokenType.RPAREN)
+        self._expect(TokenType.RIGHT_PARENTHESIS)
         self._consume_optional(TokenType.SEMICOLON)
         return InsertNode(name, values)
 
@@ -117,15 +108,15 @@ class Parser:
           | IN (POINT(<x>,<y>), K <k>)
         """
         self._expect(TokenType.SELECT)
-        self._expect(TokenType.STAR)
+        self._expect(TokenType.ASTERISK)
         self._expect(TokenType.FROM)
-        table_name = self._expect(TokenType.IDENT).value
+        table_name = self._expect(TokenType.IDENTIFIER).value
         self._expect(TokenType.WHERE)
-        col = self._expect(TokenType.IDENT).value
+        col = self._expect(TokenType.IDENTIFIER).value
 
         tok = self._peek()
 
-        if tok.type == TokenType.EQ:
+        if tok.type == TokenType.EQUAL:
             self._advance()
             value = self._read_literal()
             self._consume_optional(TokenType.SEMICOLON)
@@ -141,13 +132,13 @@ class Parser:
 
         if tok.type == TokenType.IN:
             self._advance()
-            self._expect(TokenType.LPAREN)
+            self._expect(TokenType.LEFT_PARENTHESIS)
             self._expect(TokenType.POINT)
-            self._expect(TokenType.LPAREN)
+            self._expect(TokenType.LEFT_PARENTHESIS)
             x = self._read_literal()
             self._expect(TokenType.COMMA)
             y = self._read_literal()
-            self._expect(TokenType.RPAREN)
+            self._expect(TokenType.RIGHT_PARENTHESIS)
             self._expect(TokenType.COMMA)
 
             next_tok = self._peek()
@@ -155,14 +146,14 @@ class Parser:
             if next_tok.type == TokenType.RADIUS:
                 self._advance()
                 r = self._read_literal()
-                self._expect(TokenType.RPAREN)
+                self._expect(TokenType.RIGHT_PARENTHESIS)
                 self._consume_optional(TokenType.SEMICOLON)
                 return SelectPointRadiusNode(table_name, col, (x, y), float(r))
 
             if next_tok.type == TokenType.K:
                 self._advance()
-                k = self._expect(TokenType.INTEGER).value
-                self._expect(TokenType.RPAREN)
+                k = self._expect(TokenType.INTEGER_LITERAL).value
+                self._expect(TokenType.RIGHT_PARENTHESIS)
                 self._consume_optional(TokenType.SEMICOLON)
                 return SelectKNNNode(table_name, col, (x, y), k)
 
@@ -179,10 +170,10 @@ class Parser:
         """DELETE FROM <tabla> WHERE <col> = <valor>"""
         self._expect(TokenType.DELETE)
         self._expect(TokenType.FROM)
-        table_name = self._expect(TokenType.IDENT).value
+        table_name = self._expect(TokenType.IDENTIFIER).value
         self._expect(TokenType.WHERE)
-        col = self._expect(TokenType.IDENT).value
-        self._expect(TokenType.EQ)
+        col = self._expect(TokenType.IDENTIFIER).value
+        self._expect(TokenType.EQUAL)
         value = self._read_literal()
         self._consume_optional(TokenType.SEMICOLON)
         return DeleteNode(table_name, col, value)
@@ -194,10 +185,85 @@ class Parser:
     def _read_literal(self):
         """Lee un valor literal: INTEGER, FLOAT o STRING."""
         tok = self._peek()
-        if tok.type in (TokenType.INTEGER, TokenType.FLOAT, TokenType.STRING):
+        if tok.type in (TokenType.INTEGER_LITERAL, TokenType.FLOAT_LITERAL, TokenType.STRING_LITERAL):
             return self._advance().value
+        if tok.type == TokenType.TRUE_LITERAL:
+            self._advance()
+            return True
+        if tok.type == TokenType.FALSE_LITERAL:
+            self._advance()
+            return False
+        if tok.type == TokenType.DATE:
+            self._advance()
+            return self._expect(TokenType.STRING_LITERAL).value
+        if tok.type == TokenType.TIME:
+            self._advance()
+            return self._expect(TokenType.STRING_LITERAL).value
         raise ParseError(
             f"Se esperaba un valor literal, se obtuvo '{tok.value}' "
+            f"({tok.type.name}) en línea {tok.line}"
+        )
+
+    def _read_column_type(self) -> str:
+        tok = self._peek()
+        if tok.type == TokenType.INT_TYPE:
+            self._advance()
+            return "INT"
+        if tok.type == TokenType.INTEGER_TYPE:
+            self._advance()
+            return "INTEGER"
+        if tok.type == TokenType.SMALLINT:
+            self._advance()
+            return "SMALLINT"
+        if tok.type == TokenType.BIGINT:
+            self._advance()
+            return "BIGINT"
+        if tok.type == TokenType.REAL:
+            self._advance()
+            return "REAL"
+        if tok.type == TokenType.DOUBLE:
+            self._advance()
+            self._expect(TokenType.PRECISION)
+            return "DOUBLE PRECISION"
+        if tok.type == TokenType.BOOLEAN:
+            self._advance()
+            return "BOOLEAN"
+        if tok.type == TokenType.CHAR:
+            self._advance()
+            self._expect(TokenType.LEFT_PARENTHESIS)
+            size = self._expect(TokenType.INTEGER_LITERAL).value
+            self._expect(TokenType.RIGHT_PARENTHESIS)
+            return f"CHAR({size})"
+        if tok.type == TokenType.DATE:
+            self._advance()
+            return "DATE"
+        if tok.type == TokenType.TIME:
+            self._advance()
+            return "TIME"
+        raise ParseError(
+            f"Se esperaba un tipo de dato, se obtuvo '{tok.value}' "
+            f"({tok.type.name}) en línea {tok.line}"
+        )
+
+    def _read_index_type(self) -> str:
+        tok = self._peek()
+        if tok.type == TokenType.RTREE:
+            self._advance()
+            return "rtree"
+        if tok.type == TokenType.BPLUS:
+            self._advance()
+            self._expect(TokenType.TREE)
+            return "bplus"
+        if tok.type == TokenType.EXTENDIBLE:
+            self._advance()
+            self._expect(TokenType.HASHING)
+            return "hashing"
+        if tok.type == TokenType.SEQUENTIAL:
+            self._advance()
+            self._expect(TokenType.FILE)
+            return "sequential"
+        raise ParseError(
+            f"Se esperaba una técnica de índice válida, se obtuvo '{tok.value}' "
             f"({tok.type.name}) en línea {tok.line}"
         )
 
