@@ -24,11 +24,10 @@ class TokenType(Enum):
     TRUE_LITERAL = auto(); FALSE_LITERAL = auto()
     # Símbolos
     LEFT_PARENTHESIS = auto();  RIGHT_PARENTHESIS = auto()
-    COMMA = auto();   SEMICOLON = auto(); DOT = auto()
+    COMMA = auto();   SEMICOLON = auto()
     ASTERISK = auto()
     # Operadores
     LESS_THAN_OR_EQUAL = auto(); GREATER_THAN_OR_EQUAL = auto()
-    NOT_EQUAL_ANGLE = auto();    NOT_EQUAL_EXCLAMATION = auto()
     LESS_THAN = auto();          GREATER_THAN = auto()
     EQUAL = auto();              BETWEEN = auto()
     AND = auto();                IN = auto()
@@ -72,8 +71,6 @@ _KEYWORDS: dict[str, TokenType] = {
 _TWO_CHAR_OPERATORS: dict[str, TokenType] = {
     "<=": TokenType.LESS_THAN_OR_EQUAL,
     ">=": TokenType.GREATER_THAN_OR_EQUAL,
-    "<>": TokenType.NOT_EQUAL_ANGLE,
-    "!=": TokenType.NOT_EQUAL_EXCLAMATION,
 }
 
 _ONE_CHAR_OPERATORS: dict[str, TokenType] = {
@@ -88,7 +85,6 @@ _DELIMITERS: dict[str, TokenType] = {
     ")": TokenType.RIGHT_PARENTHESIS,
     ",": TokenType.COMMA,
     ";": TokenType.SEMICOLON,
-    ".": TokenType.DOT,
 }
 
 
@@ -139,11 +135,11 @@ class Lexer:
                 tokens.append(self.read_identifier_or_keyword())
                 continue
 
-            if ch in "<>=!*":
+            if ch in "<>=*":
                 tokens.append(self.read_operator())
                 continue
 
-            if ch in "(),;.":
+            if ch in "(),;":
                 tokens.append(self.read_delimiter())
                 continue
 
@@ -254,4 +250,4 @@ class Lexer:
         return self.sql[position]
 
     def _is_special_character(self, ch: str) -> bool:
-        return ch in "(),;=*'-.<>!"
+        return ch in "(),;=*'-.<>"

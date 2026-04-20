@@ -1,7 +1,7 @@
 from .lexer import Lexer, Token, TokenType, LexError
 from .parser import Parser, ParseError
 from .ast_nodes import (
-    CreateTableNode, InsertNode, SelectEqualNode, SelectRangeNode,
+    CreateTableNode, InsertNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,
     SelectPointRadiusNode, SelectKNNNode, DeleteNode,
 )
 
@@ -15,6 +15,7 @@ if __name__ == "__main__":
         "CREATE TABLE many_columns (id INT INDEX BPLUS TREE, age SMALLINT, salary DOUBLE PRECISION, active BOOLEAN, code CHAR(8), created_at DATE, created_time TIME) FROM FILE 'data.csv';",
         "CREATE TABLE no_indexes (id INTEGER, name CHAR(12), birth_date DATE, login_time TIME);",
         "SELECT * FROM users WHERE id = 100;",
+        "SELECT * FROM users WHERE id >= 100;",
         "SELECT * FROM users WHERE id BETWEEN 10 AND 20;",
         "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), RADIUS 3.2);",
         "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), K 5);",
@@ -36,6 +37,7 @@ if __name__ == "__main__":
         "CREATE TABLE mixed_indexes (id INT INDEX BPLUS TREE, active BOOLEAN, score REAL INDEX SEQUENTIAL FILE);",
         "CREATE TABLE many_columns (id INT INDEX BPLUS TREE, age SMALLINT, salary DOUBLE PRECISION, active BOOLEAN, code CHAR(8), created_at DATE, created_time TIME) FROM FILE 'data.csv';",
         "SELECT * FROM users WHERE id = 100;",
+        "SELECT * FROM users WHERE id >= 100;",
         "SELECT * FROM users WHERE id BETWEEN 10 AND 20;",
         "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), RADIUS 3.2);",
         "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), K 5);",
@@ -57,6 +59,9 @@ if __name__ == "__main__":
         "CREATE TABLE bad_sequential_only (id INT INDEX SEQUENTIAL);",
         "CREATE TABLE bad_bplus_only (id INT INDEX BPLUS);",
         "CREATE TABLE bad_file_path (id INT) FROM FILE data.csv;",
+        "SELECT * FROM users WHERE id = 100",
+        "INSERT INTO users VALUES (1, 12.5, 7.8)",
+        "DELETE FROM users WHERE id = 100",
     ]
 
     print("PRUEBAS DE LEXER Y PARSER")

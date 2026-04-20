@@ -1,30 +1,28 @@
 # Parser
 
-Este módulo implementa el análisis léxico y sintáctico del subconjunto de SQL usado por el proyecto. Su responsabilidad es convertir una consulta de texto en una secuencia de tokens y luego en un nodo AST consumible por el motor de ejecución.
+Este módulo reúne el estado actual del parser del proyecto. Su responsabilidad es transformar una consulta SQL del subconjunto definido por el equipo en tokens válidos y luego en nodos AST consumibles por el resto del sistema.
 
-## Componentes
+Pruebas manuales del lexer y parser:
 
-- `lexer.py`: tokeniza la consulta SQL.
-- `parser.py`: aplica análisis sintáctico descendente recursivo.
-- `ast_nodes.py`: define los nodos del árbol sintáctico abstracto.
-- `__init__.py`: expone las clases principales y contiene pruebas manuales del lexer y parser.
-- `documentation.txt`: documento base con la lista de instrucciones y la gramática de referencia.
+```powershell
+python -m back.parser.__init__
+```
 
-## Instrucciones soportadas
+## Análisis Léxico
 
-El parser acepta actualmente las siguientes sentencias:
+El análisis léxico está implementado en `lexer.py`. Su trabajo es recorrer la consulta carácter por carácter, validar que cada símbolo pertenezca al alfabeto aceptado por el proyecto y generar la secuencia de tokens que utilizará el parser.
 
-1. `CREATE TABLE <name> (<column> <type> [INDEX <technique>], ...) [FROM FILE <path>];`
-2. `SELECT * FROM <table> WHERE <column> = <value>;`
-3. `SELECT * FROM <table> WHERE <column> BETWEEN <value_1> AND <value_2>;`
-4. `SELECT * FROM <table> WHERE <column> IN (POINT(<x>, <y>), RADIUS <r>);`
-5. `SELECT * FROM <table> WHERE <column> IN (POINT(<x>, <y>), K <k>);`
-6. `INSERT INTO <table> VALUES (...);`
-7. `DELETE FROM <table> WHERE <column> = <value>;`
+Actualmente el lexer reconoce:
 
-## Tipos de dato soportados
+- Sentencias `CREATE TABLE`, `SELECT`, `INSERT` y `DELETE`
+- Identificadores de tablas y columnas con la forma `[A-Za-z_][A-Za-z0-9_]*`
+- Literales enteros, flotantes, cadenas entre comillas simples y booleanos
+- Literales tipados para `DATE` y `TIME` en la forma `DATE 'yyyy-mm-dd'` y `TIME 'hh:mm:ss'`
+- Delimitadores `(`, `)`, `,`, `;` y `*`
+- Operadores `=`, `<`, `>`, `<=`, `>=`, `BETWEEN`, `AND`, `IN`
+- Técnicas de índice expresadas como combinaciones de keywords: `RTREE`, `BPLUS TREE`, `EXTENDIBLE HASHING` y `SEQUENTIAL FILE`
 
-El proyecto trabaja con registros de longitud fija. Por esa razón, el subconjunto de SQL aceptado por el parser se limita a tipos de dato que pueden mapearse a una representación de tamaño fijo en almacenamiento. Esta decisión simplifica el manejo del esquema, el cálculo del tamaño de registro y la serialización en disco.
+El lexer también soporta los tipos de datos de longitud fija acordados para el proyecto. Esta restricción se mantiene porque la capa de almacenamiento trabaja con registros de tamaño fijo.
 
 | Tipo de dato | Descripción | Tamaño fijo |
 | --- | --- | --- |
@@ -38,96 +36,60 @@ El proyecto trabaja con registros de longitud fija. Por esa razón, el subconjun
 | `DATE` | Fecha sin componente de hora | 4 bytes |
 | `TIME` | Hora sin componente de fecha | 8 bytes |
 
-## Técnicas de índice soportadas
+Notas actuales del lexer:
 
-Las técnicas de índice se expresan como combinaciones de keywords:
+- Toda consulta debe terminar con punto y coma, por medio del token `SEMICOLON`
+- El path de `FROM FILE` debe escribirse como `STRING_LITERAL`
+- El lexer rechaza caracteres inesperados antes de intentar tokenizar
 
-- `RTREE`
-- `BPLUS TREE`
-- `EXTENDIBLE HASHING`
-- `SEQUENTIAL FILE`
+## Análisis Sintáctico
 
-## Literales soportados
+El análisis sintáctico está implementado en `parser.py` mediante un parser descendente recursivo. Su entrada es la lista de tokens producida por `Lexer`, y su salida es un nodo del AST definido en `ast_nodes.py`.
 
-El parser reconoce los siguientes valores literales:
+Sentencias soportadas en el estado actual:
 
-- enteros
-- flotantes
-- cadenas entre comillas simples
-- booleanos: `TRUE`, `FALSE`
-- fecha tipada: `DATE 'yyyy-mm-dd'`
-- hora tipada: `TIME 'hh:mm:ss'`
+1. `CREATE TABLE <name> (<column> <type> [INDEX <technique>], ...) [FROM FILE <path>];`
+2. `SELECT * FROM <table> WHERE <column> = <value>;`
+3. `SELECT * FROM <table> WHERE <column> <comparison_operator> <value>;`
+4. `SELECT * FROM <table> WHERE <column> BETWEEN <value_1> AND <value_2>;`
+5. `SELECT * FROM <table> WHERE <column> IN (POINT(<x>, <y>), RADIUS <r>);`
+6. `SELECT * FROM <table> WHERE <column> IN (POINT(<x>, <y>), K <k>);`
+7. `INSERT INTO <table> VALUES (...);`
+8. `DELETE FROM <table> WHERE <column> = <value>;`
 
-## Convenciones actuales
+Reglas sintácticas ya consolidadas:
 
-- El path en `FROM FILE` debe escribirse entre comillas simples.
-- El lexer acepta nombres de tabla y columna con el patrón `identifier ::= [A-Za-z_][A-Za-z0-9_]*`.
-- La validación de `DATE` y `TIME` es sintáctica. Por ahora, el parser exige la forma `DATE <string>` y `TIME <string>`, pero no valida todavía el formato semántico interno.
+- Cada entrada del parser contiene una sola consulta
+- El punto y coma final es obligatorio
+- `CREATE TABLE` acepta `FROM FILE` solo con una cadena entre comillas simples
+- `DELETE` solo acepta comparación por igualdad
+- `SELECT` acepta `=`, `<`, `>`, `<=`, `>=`, `BETWEEN` y las dos variantes espaciales con `POINT`
 
-## Gramática de referencia
+Nodos AST actualmente definidos:
 
-La gramática base usada en este módulo es la siguiente. Puede ajustarse más adelante según evolucione el parser.
+- `CreateTableNode`
+- `InsertNode`
+- `SelectEqualNode`
+- `SelectComparisonNode`
+- `SelectRangeNode`
+- `SelectPointRadiusNode`
+- `SelectKNNNode`
+- `DeleteNode`
 
-```ebnf
-statement ::= create_stmt | select_stmt | insert_stmt | delete_stmt
+## Verificación Semántica
 
-create_stmt ::= CREATE TABLE <identifier> ( <column_list> ) [ FROM FILE <string_literal> ] ;
-column_list ::= <column_def> ( , <column_def> )*
-column_def  ::= <identifier> <data_type> [ INDEX <index_type> ]
-data_type   ::= INT
-             | INTEGER
-             | SMALLINT
-             | BIGINT
-             | REAL
-             | DOUBLE PRECISION
-             | BOOLEAN
-             | CHAR ( <integer_literal> )
-             | DATE
-             | TIME
-index_type  ::= SEQUENTIAL FILE | EXTENDIBLE HASHING | BPLUS TREE | RTREE
+La verificación semántica todavía no está implementada. Esta fase sigue en proceso y se abordará después de cerrar la etapa sintáctica.
 
-select_stmt ::= SELECT * FROM <identifier> WHERE <identifier> = <literal> ;
-select_stmt ::= SELECT * FROM <identifier> WHERE <identifier> BETWEEN <literal> AND <literal> ;
-select_stmt ::= SELECT * FROM <identifier> WHERE <identifier> IN ( POINT ( <literal> , <literal> ) , RADIUS <literal> ) ;
-select_stmt ::= SELECT * FROM <identifier> WHERE <identifier> IN ( POINT ( <literal> , <literal> ) , K <literal> ) ;
+Por el momento, el parser solo valida estructura y forma de los tokens. Todavía no resuelve reglas semánticas como:
 
-insert_stmt ::= INSERT INTO <identifier> VALUES ( <literal> ( , <literal> )* ) ;
+- Compatibilidad entre tipos de datos y valores
+- Validación real del formato interno de `DATE` y `TIME`
+- Restricciones sobre qué columnas pueden participar en ciertas búsquedas
+- Coherencia entre la técnica de índice declarada y el uso posterior en ejecución
+- Validación de existencia de tablas, columnas o archivos
 
-delete_stmt ::= DELETE FROM <identifier> WHERE <identifier> = <literal> ;
-```
+En consecuencia, el estado actual del módulo debe interpretarse así:
 
-## Ejemplos válidos
-
-```sql
-CREATE TABLE users (
-    id INT INDEX BPLUS TREE,
-    active BOOLEAN,
-    salary DOUBLE PRECISION,
-    created_at DATE,
-    created_time TIME
-) FROM FILE 'data.csv';
-
-SELECT * FROM users WHERE id = 100;
-SELECT * FROM users WHERE id BETWEEN 10 AND 20;
-SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), RADIUS 3.2);
-SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), K 5);
-
-INSERT INTO users VALUES (TRUE, DATE '2026-04-19', TIME '10:30:00');
-
-DELETE FROM users WHERE id = 100;
-```
-
-## Pruebas manuales
-
-El archivo `back/parser/__init__.py` contiene pruebas manuales para lexer y parser. Para ejecutarlas desde la raíz del proyecto:
-
-```powershell
-python -m back.parser.__init__
-```
-
-## Estado actual
-
-- El análisis léxico está operativo con la sintaxis acordada.
-- El parser ya reconoce `CREATE TABLE`, `SELECT`, `INSERT` y `DELETE` dentro del subconjunto definido.
-- El backend compila correctamente después de los cambios recientes.
-- La gramática documentada aquí debe considerarse una referencia viva y puede ajustarse cuando continúe el trabajo del análisis sintáctico.
+- El análisis léxico está operativo
+- El análisis sintáctico está operativo dentro del subconjunto definido
+- La verificación semántica sigue pendiente de implementación

@@ -24,6 +24,16 @@ class SelectEqualNode:
         self.value = value
 
 
+class SelectComparisonNode:
+    """SELECT * FROM tabla WHERE col <op> valor"""
+
+    def __init__(self, table_name: str, column: str, operator: str, value):
+        self.table_name = table_name
+        self.column = column
+        self.operator = operator
+        self.value = value
+
+
 class SelectRangeNode:
     """SELECT * FROM tabla WHERE col BETWEEN v1 AND v2"""
 
