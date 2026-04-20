@@ -7,6 +7,26 @@ class CreateTableNode:
         self.from_file = from_file
 
 
+class DateLiteralNode:
+    """Literal tipado DATE 'yyyy-mm-dd'"""
+
+    def __init__(self, value: str):
+        self.value = value
+
+    def __str__(self):
+        return self.value
+
+
+class TimeLiteralNode:
+    """Literal tipado TIME 'hh:mm:ss'"""
+
+    def __init__(self, value: str):
+        self.value = value
+
+    def __str__(self):
+        return self.value
+
+
 class InsertNode:
     """INSERT INTO tabla VALUES (...)"""
 

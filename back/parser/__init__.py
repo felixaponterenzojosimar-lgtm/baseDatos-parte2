@@ -1,7 +1,8 @@
-from .lexer import Lexer, Token, TokenType, LexError
+from .lexical_analizer import LexicalAnalizer, Token, TokenType, LexError
 from .parser import Parser, ParseError
+from .semantic_analyzer import SemanticAnalyzer, SemanticError
 from .ast_nodes import (
-    CreateTableNode, InsertNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,
+    CreateTableNode, DateLiteralNode, TimeLiteralNode, InsertNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,
     SelectPointRadiusNode, SelectKNNNode, DeleteNode,
 )
 
@@ -21,6 +22,8 @@ if __name__ == "__main__":
         "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), K 5);",
         "INSERT INTO users VALUES (1, 12.5, 7.8);",
         "INSERT INTO users VALUES (TRUE, DATE '2026-04-19', TIME '10:30:00');",
+        "SELECT * FROM users WHERE created_at = DATE '2026-04-19';",
+        "SELECT * FROM users WHERE created_time = TIME '10:30:00';",
         "DELETE FROM users WHERE id = 100;",
     ]
 
@@ -43,6 +46,8 @@ if __name__ == "__main__":
         "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), K 5);",
         "INSERT INTO users VALUES (1, 12.5, 7.8);",
         "INSERT INTO users VALUES (TRUE, DATE '2026-04-19', TIME '10:30:00');",
+        "SELECT * FROM users WHERE created_at = DATE '2026-04-19';",
+        "SELECT * FROM users WHERE created_time = TIME '10:30:00';",
         "DELETE FROM users WHERE id = 100;",
     ]
 
@@ -64,6 +69,35 @@ if __name__ == "__main__":
         "DELETE FROM users WHERE id = 100",
     ]
 
+    semantic_valid_examples = [
+        "CREATE TABLE semantic_ok (id INT, code CHAR(8));",
+        "CREATE TABLE semantic_file (id INT) FROM FILE 'data.csv';",
+        "SELECT * FROM users WHERE id BETWEEN 10 AND 20;",
+        "SELECT * FROM users WHERE created_at = DATE '2026-04-19';",
+        "SELECT * FROM users WHERE created_at = DATE '2024-02-29';",
+        "SELECT * FROM users WHERE created_time = TIME '10:30:00';",
+        "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), RADIUS 3.2);",
+        "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), K 5);",
+    ]
+
+    semantic_rejected_examples = [
+        "CREATE TABLE duplicated_columns (id INT, id REAL);",
+        "CREATE TABLE bad_char_zero (code CHAR(0));",
+        "CREATE TABLE empty_file_path (id INT) FROM FILE '';",
+        "SELECT * FROM users WHERE id BETWEEN 20 AND 10;",
+        "SELECT * FROM users WHERE id BETWEEN 10 AND '20';",
+        "SELECT * FROM users WHERE created_at = DATE '2026-13-19';",
+        "SELECT * FROM users WHERE created_at = DATE '2026-04';",
+        "SELECT * FROM users WHERE created_at = DATE '2026-02-29';",
+        "SELECT * FROM users WHERE created_at = DATE '2025-04-31';",
+        "SELECT * FROM users WHERE created_time = TIME '25:30:00';",
+        "SELECT * FROM users WHERE created_time = TIME '10:70:00';",
+        "SELECT * FROM users WHERE created_time = TIME '10:30';",
+        "SELECT * FROM users WHERE location IN (POINT('north', 7.8), RADIUS 3.2);",
+        "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), RADIUS 0);",
+        "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), K 0);",
+    ]
+
     print("PRUEBAS DE LEXER Y PARSER")
     print("")
     print("LEXER")
@@ -73,7 +107,7 @@ if __name__ == "__main__":
     lexer_valid_passed = 0
     for sql in lexer_valid_examples:
         try:
-            tokens = Lexer(sql).tokenize()
+            tokens = LexicalAnalizer().tokenize(sql)
             lexer_valid_passed += 1
             print(f"[OK] {sql}")
             print("TOKENS:", [token.type.name for token in tokens])
@@ -87,7 +121,7 @@ if __name__ == "__main__":
     lexer_rejected_passed = 0
     for sql in lexer_rejected_examples:
         try:
-            tokens = Lexer(sql).tokenize()
+            tokens = LexicalAnalizer().tokenize(sql)
             print(f"[NO RECHAZADO] {sql}")
             print("TOKENS:", [token.type.name for token in tokens])
         except LexError as error:
@@ -134,3 +168,37 @@ if __name__ == "__main__":
     print("RESUMEN PARSER")
     print(f"Validos parseados: {parser_valid_passed}/{len(parser_valid_examples)}")
     print(f"Rechazados por parser: {parser_rejected_passed}/{len(parser_rejected_examples)}")
+    print("")
+    print("SEMANTICA")
+    print("")
+    print("CASOS VALIDOS")
+
+    semantic_valid_passed = 0
+    for sql in semantic_valid_examples:
+        try:
+            node = Parser(sql).parse()
+            semantic_valid_passed += 1
+            print(f"[OK] {sql}")
+            print("AST:", type(node).__name__)
+        except (LexError, ParseError, SemanticError) as error:
+            print(f"[ERROR] {sql}")
+            print(f"{type(error).__name__}: {error}")
+        print("")
+
+    print("CASOS RECHAZADOS")
+
+    semantic_rejected_passed = 0
+    for sql in semantic_rejected_examples:
+        try:
+            node = Parser(sql).parse()
+            print(f"[NO RECHAZADO] {sql}")
+            print("AST:", type(node).__name__)
+        except (LexError, ParseError, SemanticError) as error:
+            semantic_rejected_passed += 1
+            print(f"[OK] {sql}")
+            print(f"{type(error).__name__}: {error}")
+        print("")
+
+    print("RESUMEN SEMANTICA")
+    print(f"Validos aceptados: {semantic_valid_passed}/{len(semantic_valid_examples)}")
+    print(f"Rechazados por semantica: {semantic_rejected_passed}/{len(semantic_rejected_examples)}")

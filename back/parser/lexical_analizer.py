@@ -92,15 +92,15 @@ class LexError(Exception):
     pass
 
 
-class Lexer:
+class LexicalAnalizer:
     """
     Tokenizador para el subconjunto SQL del proyecto.
     Input:  sql  cadena con la sentencia SQL
     Output: list[Token] vía tokenize()
     """
 
-    def __init__(self, sql: str):
-        self.sql = sql
+    def __init__(self):
+        self.sql = ""
         self.pos = 0
         self.line = 1
 
@@ -108,7 +108,10 @@ class Lexer:
     # API pública
     # ------------------------------------------------------------------
 
-    def tokenize(self) -> list:
+    def tokenize(self, sql: str) -> list:
+        self.sql = sql
+        self.pos = 0
+        self.line = 1
         tokens = []
         while self.pos < len(self.sql):
             ch = self.sql[self.pos]

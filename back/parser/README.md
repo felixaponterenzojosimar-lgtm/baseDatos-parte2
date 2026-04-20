@@ -10,7 +10,7 @@ python -m back.parser.__init__
 
 ## Análisis Léxico
 
-El análisis léxico está implementado en `lexer.py`. Su trabajo es recorrer la consulta carácter por carácter, validar que cada símbolo pertenezca al alfabeto aceptado por el proyecto y generar la secuencia de tokens que utilizará el parser.
+El análisis léxico está implementado en `lexical_analizer.py`. Su trabajo es recorrer la consulta carácter por carácter, validar que cada símbolo pertenezca al alfabeto aceptado por el proyecto y generar la secuencia de tokens que utilizará el parser.
 
 Actualmente el lexer reconoce:
 
@@ -44,7 +44,17 @@ Notas actuales del lexer:
 
 ## Análisis Sintáctico
 
-El análisis sintáctico está implementado en `parser.py` mediante un parser descendente recursivo. Su entrada es la lista de tokens producida por `Lexer`, y su salida es un nodo del AST definido en `ast_nodes.py`.
+El análisis sintáctico está implementado en `parser.py` mediante un parser descendente recursivo. Su entrada es la lista de tokens producida por `LexicalAnalizer`, y su salida es un nodo del AST definido en `ast_nodes.py`.
+
+En la estructura actual del módulo:
+
+- `parser.py` conserva la API pública `Parser`
+- `Parser` mantiene la consulta recibida en `__init__` y ejecuta todo el pipeline en `parse()`
+- `LexicalAnalizer` recibe la consulta en `tokenize(sql)`
+- `syntactic_analyzer.py` concentra las reglas del análisis sintáctico
+- `SyntacticAnalyzer` recibe la lista de tokens en `parse(tokens)` y encapsula su excepción interna
+- `parser.py` traduce los errores sintácticos internos a `ParseError` para conservar la API pública estable
+- `semantic_analyzer.py` ejecuta la validación semántica posterior sobre el AST
 
 Sentencias soportadas en el estado actual:
 
@@ -78,18 +88,45 @@ Nodos AST actualmente definidos:
 
 ## Verificación Semántica
 
-La verificación semántica todavía no está implementada. Esta fase sigue en proceso y se abordará después de cerrar la etapa sintáctica.
+La verificación semántica se encuentra en una primera etapa de implementación. Actualmente existe una revisión semántica inicial sobre el AST, sin depender todavía del motor de almacenamiento.
 
-Por el momento, el parser solo valida estructura y forma de los tokens. Todavía no resuelve reglas semánticas como:
+Por el momento, el parser valida estructura y forma de los tokens, y además puede ejecutar una primera capa de validaciones semánticas que dependen únicamente del AST y de la definición local de la consulta.
 
-- Compatibilidad entre tipos de datos y valores
-- Validación real del formato interno de `DATE` y `TIME`
-- Restricciones sobre qué columnas pueden participar en ciertas búsquedas
-- Coherencia entre la técnica de índice declarada y el uso posterior en ejecución
-- Validación de existencia de tablas, columnas o archivos
+Restricciones semánticas implementadas actualmente:
+
+- Verificar que no existan nombres de columna repetidos dentro de una misma tabla
+- Verificar que `CHAR(n)` use un tamaño entero positivo mayor que cero
+- Verificar que `BETWEEN` reciba dos literales comparables entre sí
+- Verificar que `K` reciba un entero positivo en búsquedas `IN (POINT(...), K ...)`
+- Verificar que `RADIUS` reciba un valor numérico positivo
+- Verificar que `POINT(x, y)` reciba coordenadas numéricas
+- Verificar que una declaración `FROM FILE` use un `STRING_LITERAL` no vacío
+- Verificar formato semántico básico de literales `DATE 'yyyy-mm-dd'` y `TIME 'hh:mm:ss'`
+
+Restricciones cubiertas actualmente por el análisis sintáctico:
+
+- Verificar que `CREATE TABLE` defina al menos una columna
+- Verificar que una técnica de índice compuesta esté completa y sea coherente con la gramática aceptada
+- Verificar que `DELETE` y `SELECT` usen operadores permitidos para el subconjunto SQL definido
+
+Restricciones semánticas que dependen de un motor funcional:
+
+- Verificar que la tabla referenciada exista realmente en la base de datos
+- Verificar que las columnas referenciadas existan en el esquema persistido de la tabla
+- Verificar que el número de valores de `INSERT` coincida con el esquema real almacenado
+- Verificar tipos contra el esquema real de una tabla ya creada
+- Verificar que los valores de `INSERT` tengan una cantidad compatible con las columnas declaradas cuando el análisis cuente con el esquema real de la tabla
+- Verificar compatibilidad básica entre tipos declarados y literales cuando el esquema de la tabla esté disponible en memoria durante el análisis
+- Verificar que no se intente crear una tabla con un nombre ya existente en el catálogo persistente
+- Verificar que el archivo indicado en `FROM FILE` exista realmente y pueda abrirse
+- Verificar que las columnas requeridas por un `RTREE` correspondan a un esquema espacial válido en el motor
+- Verificar que la técnica de índice declarada sea compatible con las operaciones que luego se intenten ejecutar sobre la tabla
+- Verificar claves duplicadas, integridad de clave primaria o conflictos de inserción
+- Verificar restricciones apoyadas en datos almacenados, como búsquedas, borrados o rangos sobre registros realmente persistidos
 
 En consecuencia, el estado actual del módulo debe interpretarse así:
 
 - El análisis léxico está operativo
 - El análisis sintáctico está operativo dentro del subconjunto definido
-- La verificación semántica sigue pendiente de implementación
+- La verificación semántica ya puede aplicarse sobre reglas que dependan del AST y del contexto inmediato
+- La verificación semántica dependiente del estado real de la base debe esperar a que el motor y la persistencia estén completos
