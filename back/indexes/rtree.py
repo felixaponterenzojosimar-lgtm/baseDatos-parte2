@@ -28,6 +28,9 @@ class RTree(Index):
         )
         self._root_path = page_manager.filepath.replace(".bin", ".root")
         self.root_id = self._load_root()
+        if self.root_id is not None and self.root_id >= self.pm.total_pages():
+            self.root_id = None
+            self._save_root()
 
     def _load_root(self):
         if not os.path.exists(self._root_path):

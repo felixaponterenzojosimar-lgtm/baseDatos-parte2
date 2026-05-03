@@ -1,6 +1,6 @@
 {
-  "lugares2": {
-    "index_type": "rtree",
+  "lugares": {
+    "index_type": "bplus",
     "primary_key": "id",
     "fields": [
       {
@@ -26,8 +26,8 @@
     ],
     "secondary_indexes": {}
   },
-  "clinetes": {
-    "index_type": "bplus",
+  "lugares3": {
+    "index_type": "rtree",
     "primary_key": "id",
     "fields": [
       {
@@ -38,77 +38,19 @@
       {
         "name": "nombre",
         "type": "VARCHAR",
-        "size": 17
+        "size": 35
       },
       {
-        "name": "edad",
-        "type": "INT",
-        "size": 4
+        "name": "lat",
+        "type": "FLOAT",
+        "size": 8
       },
       {
-        "name": "salario",
+        "name": "lon",
         "type": "FLOAT",
         "size": 8
       }
     ],
     "secondary_indexes": {}
-  },
-  "clinetes2": {
-    "index_type": "bplus",
-    "primary_key": "id",
-    "fields": [
-      {
-        "name": "id",
-        "type": "INT",
-        "size": 4
-      },
-      {
-        "name": "nombre",
-        "type": "VARCHAR",
-        "size": 17
-      },
-      {
-        "name": "edad",
-        "type": "INT",
-        "size": 4
-      },
-      {
-        "name": "salario",
-        "type": "FLOAT",
-        "size": 8
-      }
-    ],
-    "secondary_indexes": {
-      "nombre": "sequential"
-    }
-  },
-  "clinetes5": {
-    "index_type": "bplus",
-    "primary_key": "id",
-    "fields": [
-      {
-        "name": "id",
-        "type": "INT",
-        "size": 4
-      },
-      {
-        "name": "nombre",
-        "type": "VARCHAR",
-        "size": 17
-      },
-      {
-        "name": "edad",
-        "type": "INT",
-        "size": 4
-      },
-      {
-        "name": "salario",
-        "type": "FLOAT",
-        "size": 8
-      }
-    ],
-    "secondary_indexes": {
-      "edad": "sequential"
-    }
   }
 }

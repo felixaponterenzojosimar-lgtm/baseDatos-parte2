@@ -263,7 +263,14 @@ class Database:
             return
         with open(self._catalog_path, encoding="utf-8") as f:
             data = json.load(f)
-        for name, entry in data.items():
+        dirty = False
+        for name, entry in list(data.items()):
+            # Verificar que el archivo principal existe y no está vacío
+            bin_path = os.path.join(DATA_DIR, f"{name}.bin")
+            if not os.path.exists(bin_path) or os.path.getsize(bin_path) == 0:
+                # Archivo corrupto o inexistente — omitir pero NO borrar el .bin
+                # (podría ser tabla recién creada sin datos, que es válida)
+                pass
             fields = []
             for fd in entry["fields"]:
                 ft = FieldType(fd["type"])
@@ -272,13 +279,23 @@ class Database:
                 else:
                     fields.append(Field(fd["name"], ft))
             schema = Schema(fields, entry["primary_key"])
-            index = self._build_index(name, schema, entry["index_type"])
-            table = Table(name, schema, index)
-            for col, idx_type in entry.get("secondary_indexes", {}).items():
-                sec_schema = Schema(schema.fields, col)
-                idx_name = f"{name}_sec_{col}"
-                table.secondary_indexes[col] = self._build_index(idx_name, sec_schema, idx_type)
-            self._tables[name] = table
+            try:
+                index = self._build_index(name, schema, entry["index_type"])
+                table = Table(name, schema, index)
+                for col, idx_type in entry.get("secondary_indexes", {}).items():
+                    sec_schema = Schema(schema.fields, col)
+                    idx_name = f"{name}_sec_{col}"
+                    try:
+                        table.secondary_indexes[col] = self._build_index(idx_name, sec_schema, idx_type)
+                    except Exception:
+                        pass
+                self._tables[name] = table
+            except Exception:
+                dirty = True
+                data.pop(name, None)
+        if dirty:
+            with open(self._catalog_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
 
     @staticmethod
     def _index_key(index) -> str:

@@ -12,6 +12,10 @@ class BPlusTree(Index):
         self.stats = stats
         self._root_path = page_manager.filepath.replace(".bin", ".root")
         self.root_id = self._load_root()
+        # Si el archivo está vacío pero el root apunta a una página, resetear
+        if self.root_id is not None and self.root_id >= self.page_manager.total_pages():
+            self.root_id = None
+            self._save_root()
 
     def _load_root(self):
         if not os.path.exists(self._root_path):
