@@ -1,5 +1,6 @@
 import os
 import csv
+import json
 from .table import Table
 from ..storage import Schema, Field, FieldType, PageManager, DiskStats
 from ..indexes import SequentialFile, ExtendibleHashing, BPlusTree, RTree
@@ -24,7 +25,10 @@ class Database:
 
     def __init__(self):
         self._tables: dict[str, Table] = {}
+        self.stats = DiskStats()
         os.makedirs(DATA_DIR, exist_ok=True)
+        self._catalog_path = os.path.join(DATA_DIR, "catalog.json")
+        self._load_catalog()
 
     # ------------------------------------------------------------------
     # API pública
@@ -47,14 +51,14 @@ class Database:
                 f"index_type '{index_type}' no válido. Opciones: {self.INDEX_TYPES}"
             )
 
-        stats = DiskStats()
-        index = self._build_index(name, schema, index_type, stats)
+        index = self._build_index(name, schema, index_type)
         table = Table(name, schema, index)
         self._tables[name] = table
 
         if from_file:
             self._load_csv(table, from_file)
 
+        self._save_catalog()
         return table
 
     def get_table(self, name: str) -> Table:
@@ -78,7 +82,11 @@ class Database:
             path = os.path.join(DATA_DIR, f"{name}{suffix}.bin")
             if os.path.exists(path):
                 os.remove(path)
+        root_path = os.path.join(DATA_DIR, f"{name}.root")
+        if os.path.exists(root_path):
+            os.remove(root_path)
         del self._tables[name]
+        self._save_catalog()
 
     def list_tables(self) -> list:
         """Output: lista de nombres de tablas existentes."""
@@ -88,9 +96,10 @@ class Database:
     # Métodos internos
     # ------------------------------------------------------------------
 
-    def _build_index(self, name: str, schema: Schema,
-                     index_type: str, stats: DiskStats):
+    def _build_index(self, name: str, schema: Schema, index_type: str, stats: DiskStats = None):
         """Instancia el índice correcto según index_type."""
+        if stats is None:
+            stats = self.stats
         main_path = os.path.join(DATA_DIR, f"{name}.bin")
         pm = PageManager(main_path, stats)
 
@@ -164,6 +173,47 @@ class Database:
     # ------------------------------------------------------------------
     # Utilidad: construir Schema desde las columnas del parser
     # ------------------------------------------------------------------
+
+    def _save_catalog(self) -> None:
+        data = {}
+        for name, table in self._tables.items():
+            fields = [
+                {"name": f.name, "type": f.field_type.value, "size": f.size}
+                for f in table.schema.fields
+            ]
+            entry = {
+                "index_type": self._index_key(table.index),
+                "primary_key": table.schema.primary_key,
+                "fields": fields,
+            }
+            data[name] = entry
+        with open(self._catalog_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+    def _load_catalog(self) -> None:
+        if not os.path.exists(self._catalog_path):
+            return
+        with open(self._catalog_path, encoding="utf-8") as f:
+            data = json.load(f)
+        for name, entry in data.items():
+            fields = []
+            for fd in entry["fields"]:
+                ft = FieldType(fd["type"])
+                if ft == FieldType.VARCHAR:
+                    fields.append(Field(fd["name"], ft, max_length=fd["size"]))
+                else:
+                    fields.append(Field(fd["name"], ft))
+            schema = Schema(fields, entry["primary_key"])
+            index = self._build_index(name, schema, entry["index_type"])
+            self._tables[name] = Table(name, schema, index)
+
+    @staticmethod
+    def _index_key(index) -> str:
+        if isinstance(index, SequentialFile):    return "sequential"
+        if isinstance(index, ExtendibleHashing): return "hashing"
+        if isinstance(index, BPlusTree):         return "bplus"
+        if isinstance(index, RTree):             return "rtree"
+        return "bplus"
 
     @staticmethod
     def schema_from_columns(columns: list) -> tuple:

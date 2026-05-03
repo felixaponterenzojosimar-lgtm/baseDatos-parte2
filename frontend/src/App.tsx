@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Database, MapPin } from "lucide-react";
+import { Database, MapPin, Upload } from "lucide-react";
 import { useState } from "react";
+import { CsvUploadModal } from "./components/CsvUploadModal";
 import { MetricsHistory } from "./components/MetricsHistory";
 import { ResultsTable } from "./components/ResultsTable";
 import { RTreeVisualization } from "./components/RTreeVisualization";
@@ -14,7 +15,7 @@ import type { TableInfo } from "./types/api";
 type Tab = "results" | "rtree" | "history";
 
 const EXAMPLE_QUERIES = [
-  `CREATE TABLE employees (\n  id INT,\n  name VARCHAR,\n  salary FLOAT\n) USING INDEX bplus;`,
+  `CREATE TABLE employees (id INT INDEX BPLUS TREE, name CHAR(50), salary REAL);`,
   `INSERT INTO employees VALUES (1, 'Alice', 4500.0);`,
   `SELECT * FROM employees WHERE salary BETWEEN 3000 AND 6000;`,
   `SELECT * FROM employees WHERE id = 1;`,
@@ -28,13 +29,20 @@ const tabVariants = {
 };
 
 export default function App() {
-  const [sql, setSql] = useState(EXAMPLE_QUERIES[0]);
+  const [sql, setSql] = useState("");
   const [activeTab, setActiveTab] = useState<Tab>("results");
   const [rtreeTable, setRtreeTable] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const [csvModalOpen, setCsvModalOpen] = useState(false);
 
   const { result, error, loading, execute } = useQuery();
-  const { tables, loading: tablesLoading, refresh, drop } = useTables();
+  const { tables, loading: tablesLoading, refresh, drop: dropTable } = useTables();
+
+  async function drop(name: string) {
+    await dropTable(name);
+    if (rtreeTable === name) setRtreeTable(null);
+    if (selectedTable === name) setSelectedTable(null);
+  }
 
   async function runQuery() {
     await execute(sql);
@@ -45,6 +53,10 @@ export default function App() {
   function handleSelectTable(t: TableInfo) {
     setSelectedTable(t.name);
     setSql(`SELECT * FROM ${t.name};`);
+    if (t.index_type === "rtree") {
+      setRtreeTable(t.name);
+    }
+    setActiveTab("results");
   }
 
   function handleShowRTree(name: string) {
@@ -79,6 +91,7 @@ export default function App() {
 
   return (
     <div className="grid h-screen overflow-hidden bg-slate-900 text-slate-100" style={{ gridTemplateColumns: "220px 1fr" }}>
+      <CsvUploadModal open={csvModalOpen} onClose={() => setCsvModalOpen(false)} onSuccess={refresh} />
 
       <Sidebar
         tables={tables}
@@ -103,7 +116,15 @@ export default function App() {
             <Database size={18} className="text-blue-500" />
             DB Manager Simulator
           </div>
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 items-center">
+            <motion.button
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              onClick={() => setCsvModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs rounded border border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white transition-colors"
+            >
+              <Upload size={12} /> Import CSV
+            </motion.button>
             {EXAMPLE_QUERIES.map((q, i) => (
               <motion.button
                 key={i}

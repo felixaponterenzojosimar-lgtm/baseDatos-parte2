@@ -1,0 +1,28 @@
+{
+  "lugares": {
+    "index_type": "rtree",
+    "primary_key": "id",
+    "fields": [
+      {
+        "name": "id",
+        "type": "INT",
+        "size": 4
+      },
+      {
+        "name": "nombre",
+        "type": "VARCHAR",
+        "size": 35
+      },
+      {
+        "name": "lat",
+        "type": "FLOAT",
+        "size": 8
+      },
+      {
+        "name": "lon",
+        "type": "FLOAT",
+        "size": 8
+      }
+    ]
+  }
+}

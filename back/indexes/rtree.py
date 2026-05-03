@@ -1,6 +1,7 @@
 import struct
 import math
 import heapq
+import os
 from .base_index import Index, NotSupportedError
 from ..storage import Schema, PageManager, DiskStats
 
@@ -25,7 +26,22 @@ class RTree(Index):
             (PAGE_SIZE - _HDR.size) // leaf_entry,
             50,
         )
-        self.root_id = None
+        self._root_path = page_manager.filepath.replace(".bin", ".root")
+        self.root_id = self._load_root()
+
+    def _load_root(self):
+        if not os.path.exists(self._root_path):
+            return None
+        with open(self._root_path, "rb") as f:
+            data = f.read(4)
+        if len(data) < 4:
+            return None
+        val = struct.unpack(">i", data)[0]
+        return val if val >= 0 else None
+
+    def _save_root(self):
+        with open(self._root_path, "wb") as f:
+            f.write(struct.pack(">i", self.root_id if self.root_id is not None else -1))
 
     # ------------------------------------------------------------------
     # API pública
@@ -35,7 +51,8 @@ class RTree(Index):
         lat = float(record[self.lat_field])
         lon = float(record[self.lon_field])
         if self.root_id is None:
-            self.root_id = self.page_manager.allocate_page()
+            self.root_id = self.pm.allocate_page()
+            self._save_root()
             self._write_node(self.root_id, {"is_leaf": True, "entries": []})
         path, leaf_id = self._choose_leaf((lat, lon))
         leaf = self._read_node(leaf_id)
@@ -43,7 +60,7 @@ class RTree(Index):
         if len(leaf["entries"]) > self.max_entries:
             left, right = self._split_node(leaf)
             self._write_node(leaf_id, left)
-            new_id = self.page_manager.allocate_page()
+            new_id = self.pm.allocate_page()
             self._write_node(new_id, right)
             self._adjust_tree(path, leaf_id, new_id)
         else:
@@ -215,7 +232,7 @@ class RTree(Index):
                 if len(parent["entries"]) > self.max_entries:
                     left, right = self._split_node(parent)
                     self._write_node(parent_id, left)
-                    split_id = self.page_manager.allocate_page()
+                    split_id = self.pm.allocate_page()
                     self._write_node(split_id, right)
                     curr_id, curr_new_id = parent_id, split_id
                 else:
@@ -227,7 +244,7 @@ class RTree(Index):
         if curr_new_id is not None:
             ln = self._read_node(curr_id)
             rn = self._read_node(curr_new_id)
-            new_root_id = self.page_manager.allocate_page()
+            new_root_id = self.pm.allocate_page()
             self._write_node(new_root_id, {
                 "is_leaf": False,
                 "entries": [
@@ -236,9 +253,10 @@ class RTree(Index):
                 ],
             })
             self.root_id = new_root_id
+            self._save_root()
 
     def _read_node(self, page_id: int) -> dict:
-        raw = self.page_manager.read_page(page_id)
+        raw = self.pm.read_page(page_id)
         is_leaf, n = _HDR.unpack(raw[:_HDR.size])
         offset = _HDR.size
         entries = []
@@ -270,7 +288,7 @@ class RTree(Index):
             for e in entries:
                 data += _MBR.pack(*e["mbr"])
                 data += _CID.pack(e["child"])
-        self.page_manager.write_page(page_id, bytes(data).ljust(PAGE_SIZE, b"\x00"))
+        self.pm.write_page(page_id, bytes(data).ljust(PAGE_SIZE, b"\x00"))
 
     def _remove_from(self, node_id: int, lat: float, lon: float) -> bool:
         node = self._read_node(node_id)

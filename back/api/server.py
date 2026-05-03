@@ -1,15 +1,19 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from collections import deque
+import json as _json
+import os
 
 from ..engine import Database, Executor
 from ..parser import Parser, ParseError
 from ..parser.semantic_analyzer import SemanticError
 from ..engine.executor import ExecutionError
 from ..indexes import SequentialFile, ExtendibleHashing, BPlusTree, RTree
+from ..storage.schema import Field, FieldType, Schema
+from ..engine.database import DATA_DIR
 from ..parser.ast_nodes import (
-    CreateTableNode, InsertNode, SelectEqualNode, SelectComparisonNode,
+    CreateTableNode, InsertNode, SelectAllNode, SelectEqualNode, SelectComparisonNode,
     SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
 )
 
@@ -33,6 +37,7 @@ _metrics_history: deque = deque(maxlen=1000)
 _NODE_OP = {
     CreateTableNode:       "CREATE TABLE",
     InsertNode:            "INSERT",
+    SelectAllNode:         "SELECT ALL",
     SelectEqualNode:       "SELECT",
     SelectComparisonNode:  "SELECT",
     SelectRangeNode:       "SELECT RANGE",
@@ -165,3 +170,51 @@ def metrics_history(limit: int = 50):
 def clear_metrics():
     _metrics_history.clear()
     return {"message": "Historial de métricas limpiado"}
+
+
+@app.post("/api/v1/tables/upload")
+async def upload_csv_table(
+    file: UploadFile = File(...),
+    table_name: str = Form(...),
+    index_type: str = Form(...),
+    fields: str = Form(...),
+):
+    fields_data = _json.loads(fields)
+
+    schema_fields = []
+    primary_key = fields_data[0]["name"]
+    for fd in fields_data:
+        if fd.get("primary_key"):
+            primary_key = fd["name"]
+        ft_str = fd["type"]
+        if ft_str == "INT":
+            schema_fields.append(Field(fd["name"], FieldType.INT))
+        elif ft_str == "REAL":
+            schema_fields.append(Field(fd["name"], FieldType.FLOAT))
+        elif ft_str == "BOOLEAN":
+            schema_fields.append(Field(fd["name"], FieldType.BOOL))
+        else:
+            schema_fields.append(Field(fd["name"], FieldType.VARCHAR, max_length=int(fd.get("size", 50))))
+
+    try:
+        schema = Schema(schema_fields, primary_key)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+    csv_path = os.path.join(DATA_DIR, f"{table_name}.csv")
+    content = await file.read()
+    with open(csv_path, "wb") as f:
+        f.write(content)
+
+    try:
+        table = db.create_table(table_name, schema, index_type)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        count = db._load_csv(table, csv_path)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Error cargando CSV: {e}")
+
+    return {"message": f"Tabla '{table_name}' creada con {count} registros", "table": table_name, "rows_loaded": count}

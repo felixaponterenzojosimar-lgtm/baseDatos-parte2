@@ -1,7 +1,8 @@
 from .lexical_analizer import Token, TokenType
 from .ast_nodes import (
-    CreateTableNode, DateLiteralNode, TimeLiteralNode, InsertNode, SelectEqualNode,
-    SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
+    CreateTableNode, DateLiteralNode, TimeLiteralNode, InsertNode, SelectAllNode,
+    SelectEqualNode, SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode,
+    SelectKNNNode, DeleteNode,
 )
 
 
@@ -93,6 +94,10 @@ class SyntacticAnalyzer:
         self.expect(TokenType.ASTERISK)
         self.expect(TokenType.FROM)
         table_name = self.expect(TokenType.IDENTIFIER).value
+
+        if self.peek().type == TokenType.SEMICOLON:
+            return SelectAllNode(table_name)
+
         self.expect(TokenType.WHERE)
         col = self.expect(TokenType.IDENTIFIER).value
 

@@ -2,6 +2,7 @@ from .base_index import Index, DuplicateKeyError
 from ..storage import Schema, PageManager, DiskStats
 import struct
 import bisect
+import os
 
 class BPlusTree(Index):
     def __init__(self, schema: Schema, page_manager: PageManager, stats: DiskStats):
@@ -9,7 +10,22 @@ class BPlusTree(Index):
         self.schema = schema
         self.page_manager = page_manager
         self.stats = stats
-        self.root_id = None
+        self._root_path = page_manager.filepath.replace(".bin", ".root")
+        self.root_id = self._load_root()
+
+    def _load_root(self):
+        if not os.path.exists(self._root_path):
+            return None
+        with open(self._root_path, "rb") as f:
+            data = f.read(4)
+        if len(data) < 4:
+            return None
+        val = struct.unpack(">i", data)[0]
+        return val if val >= 0 else None
+
+    def _save_root(self):
+        with open(self._root_path, "wb") as f:
+            f.write(struct.pack(">i", self.root_id if self.root_id is not None else -1))
 
     def search(self, key):
         leaf_id = self._find_leaf(key)
@@ -23,6 +39,7 @@ class BPlusTree(Index):
         key = record[self.schema.primary_key]
         if self.root_id is None:
             self.root_id = self.page_manager.allocate_page()
+            self._save_root()
             new_node = {"is_leaf": True, "keys": [key], "children": [record], "next_leaf": 0}
             self._write_node(self.root_id, new_node)
             return
@@ -32,6 +49,7 @@ class BPlusTree(Index):
             new_root_id = self.page_manager.allocate_page()
             new_root = {"is_leaf": False, "keys": [promoted_key], "children": [self.root_id, new_child_id]}
             self.root_id = new_root_id
+            self._save_root()
             self._write_node(new_root_id, new_root)
 
     def _insert_recursive(self, curr_id, record):
@@ -85,7 +103,7 @@ class BPlusTree(Index):
         root_node = self._read_node(self.root_id)
         if not root_node["is_leaf"] and len(root_node["keys"]) == 0:
             self.root_id = root_node["children"][0]
-            
+            self._save_root()
         return success
 
     def _remove_recursive(self, parent_id, curr_id, child_idx, key):

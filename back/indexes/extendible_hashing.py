@@ -101,6 +101,16 @@ class ExtendibleHashing(Index):
         """No soportado en hashing extensible."""
         raise NotSupportedError("ExtendibleHashing no soporta range_search")
 
+    def scan_all(self) -> list[dict]:
+        """Retorna todos los registros activos iterando los buckets únicos."""
+        _, page_ids = self._read_directory()
+        results = []
+        for page_id in set(page_ids):
+            for flag, record in self._read_bucket(page_id):
+                if flag == self.FLAG_ACTIVE:
+                    results.append(record)
+        return results
+
     # ------------------------------------------------------------------
     # Métodos internos
     # ------------------------------------------------------------------

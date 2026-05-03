@@ -35,6 +35,13 @@ class InsertNode:
         self.values = values
 
 
+class SelectAllNode:
+    """SELECT * FROM tabla"""
+
+    def __init__(self, table_name: str):
+        self.table_name = table_name
+
+
 class SelectEqualNode:
     """SELECT * FROM tabla WHERE col = valor"""
 

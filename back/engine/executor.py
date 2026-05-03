@@ -1,9 +1,9 @@
 from .database import Database
-from ..storage import DiskStats
 from ..indexes import RTree, NotSupportedError
+from ..indexes.extendible_hashing import ExtendibleHashing
 from ..parser.ast_nodes import (
-    CreateTableNode, InsertNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,
-    SelectPointRadiusNode, SelectKNNNode, DeleteNode,
+    CreateTableNode, InsertNode, SelectAllNode, SelectEqualNode, SelectComparisonNode,
+    SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
 )
 
 
@@ -19,7 +19,7 @@ class Executor:
 
     def __init__(self, db: Database):
         self.db = db
-        self.stats = DiskStats()
+        self.stats = db.stats
 
     # ------------------------------------------------------------------
     # API publica
@@ -36,6 +36,7 @@ class Executor:
         dispatch = {
             CreateTableNode:       self._exec_create,
             InsertNode:            self._exec_insert,
+            SelectAllNode:         self._exec_select_all,
             SelectEqualNode:       self._exec_select_equal,
             SelectComparisonNode:  self._exec_select_comparison,
             SelectRangeNode:       self._exec_select_range,
@@ -91,6 +92,21 @@ class Executor:
 
         table.index.add(record)
         return []
+
+    def _exec_select_all(self, node: SelectAllNode) -> list:
+        table = self.db.get_table(node.table_name)
+        index = table.index
+        if isinstance(index, RTree):
+            return [p["record"] for p in index.all_points()]
+        if isinstance(index, ExtendibleHashing):
+            return index.scan_all()
+        from ..storage.schema import FieldType
+        pk = table.schema.get_field(table.schema.primary_key)
+        if pk.field_type == FieldType.INT:
+            return index.range_search(-2147483648, 2147483647)
+        if pk.field_type == FieldType.FLOAT:
+            return index.range_search(float("-inf"), float("inf"))
+        return index.range_search("", chr(127) * pk.size)
 
     def _exec_select_equal(self, node: SelectEqualNode) -> list:
         """Busqueda exacta por clave."""
