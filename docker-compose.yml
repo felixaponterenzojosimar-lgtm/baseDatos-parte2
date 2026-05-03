@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    ports:
+      - "80:80"
+    volumes:
+      - db_data:/app/back/data
+    restart: unless-stopped
+
+volumes:
+  db_data:
