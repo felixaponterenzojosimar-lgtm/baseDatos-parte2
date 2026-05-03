@@ -1,8 +1,8 @@
 from .lexical_analizer import Token, TokenType
 from .ast_nodes import (
-    CreateTableNode, DateLiteralNode, TimeLiteralNode, InsertNode, SelectAllNode,
-    SelectEqualNode, SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode,
-    SelectKNNNode, DeleteNode,
+    CreateTableNode, CreateIndexNode, DateLiteralNode, TimeLiteralNode, InsertNode,
+    SelectAllNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,
+    SelectPointRadiusNode, SelectKNNNode, DeleteNode,
 )
 
 
@@ -25,7 +25,11 @@ class SyntacticAnalyzer:
         self.pos = 0
         tok = self.peek()
         if tok.type == TokenType.CREATE:
-            node = self.parse_create_table()
+            next_tok = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
+            if next_tok and next_tok.type == TokenType.INDEX:
+                node = self.parse_create_index()
+            else:
+                node = self.parse_create_table()
         elif tok.type == TokenType.INSERT:
             node = self.parse_insert()
         elif tok.type == TokenType.SELECT:
@@ -70,6 +74,18 @@ class SyntacticAnalyzer:
             from_file = self.expect(TokenType.STRING_LITERAL).value
 
         return CreateTableNode(name, columns, from_file)
+
+    def parse_create_index(self) -> CreateIndexNode:
+        self.expect(TokenType.CREATE)
+        self.expect(TokenType.INDEX)
+        self.expect(TokenType.ON)
+        table_name = self.expect(TokenType.IDENTIFIER).value
+        self.expect(TokenType.LEFT_PARENTHESIS)
+        column = self.expect(TokenType.IDENTIFIER).value
+        self.expect(TokenType.RIGHT_PARENTHESIS)
+        self.expect(TokenType.USING)
+        index_type = self.read_index_type()
+        return CreateIndexNode(table_name, column, index_type)
 
     def parse_insert(self) -> InsertNode:
         self.expect(TokenType.INSERT)

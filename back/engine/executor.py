@@ -1,9 +1,10 @@
 from .database import Database
 from ..indexes import RTree, NotSupportedError
 from ..indexes.extendible_hashing import ExtendibleHashing
+from ..indexes.base_index import DuplicateKeyError
 from ..parser.ast_nodes import (
-    CreateTableNode, InsertNode, SelectAllNode, SelectEqualNode, SelectComparisonNode,
-    SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
+    CreateTableNode, CreateIndexNode, InsertNode, SelectAllNode, SelectEqualNode,
+    SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
 )
 
 
@@ -35,6 +36,7 @@ class Executor:
 
         dispatch = {
             CreateTableNode:       self._exec_create,
+            CreateIndexNode:       self._exec_create_index,
             InsertNode:            self._exec_insert,
             SelectAllNode:         self._exec_select_all,
             SelectEqualNode:       self._exec_select_equal,
@@ -73,6 +75,10 @@ class Executor:
         )
         return []
 
+    def _exec_create_index(self, node: CreateIndexNode) -> list:
+        self.db.add_secondary_index(node.table_name, node.column, node.index_type)
+        return []
+
     def _exec_insert(self, node: InsertNode) -> list:
         """
         Mapea los valores posicionales a los campos del schema y llama add().
@@ -91,6 +97,11 @@ class Executor:
             record[field.name] = self._cast_value(value, field)
 
         table.index.add(record)
+        for sec_idx in table.secondary_indexes.values():
+            try:
+                sec_idx.add(record)
+            except DuplicateKeyError:
+                pass
         return []
 
     def _exec_select_all(self, node: SelectAllNode) -> list:
@@ -111,6 +122,11 @@ class Executor:
     def _exec_select_equal(self, node: SelectEqualNode) -> list:
         """Busqueda exacta por clave."""
         table = self.db.get_table(node.table_name)
+        if node.column in table.secondary_indexes:
+            field = table.schema.get_field(node.column)
+            key = self._cast_value(node.value, field)
+            result = table.secondary_indexes[node.column].search(key)
+            return [result] if result is not None else []
         key = self._cast_key(node.value, table, node.column)
         result = table.index.search(key)
         return [result] if result is not None else []
@@ -153,6 +169,11 @@ class Executor:
     def _exec_select_range(self, node: SelectRangeNode) -> list:
         """Busqueda por rango [begin, end]."""
         table = self.db.get_table(node.table_name)
+        if node.column in table.secondary_indexes:
+            field = table.schema.get_field(node.column)
+            begin = self._cast_value(node.begin, field)
+            end = self._cast_value(node.end, field)
+            return table.secondary_indexes[node.column].range_search(begin, end)
         begin = self._cast_key(node.begin, table, node.column)
         end = self._cast_key(node.end, table, node.column)
         return table.index.range_search(begin, end)
@@ -179,6 +200,14 @@ class Executor:
         """Elimina el registro con la clave dada."""
         table = self.db.get_table(node.table_name)
         key = self._cast_key(node.value, table, node.column)
+
+        if table.secondary_indexes and node.column == table.schema.primary_key:
+            record = table.index.search(key)
+            if record:
+                for col, sec_idx in table.secondary_indexes.items():
+                    sec_key = self._cast_key(record[col], table, col)
+                    sec_idx.remove(sec_key)
+
         removed = table.index.remove(key)
         return [{"deleted": removed}]
 

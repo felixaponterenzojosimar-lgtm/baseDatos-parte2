@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Upload, X, ChevronDown } from "lucide-react";
+import { Upload, X, ChevronDown, Plus, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 type FieldType = "INT" | "REAL" | "CHAR" | "BOOLEAN";
@@ -9,6 +9,11 @@ interface ColumnDef {
   type: FieldType;
   size: number;
   primaryKey: boolean;
+}
+
+interface SecondaryIndex {
+  column: string;
+  index_type: string;
 }
 
 interface Props {
@@ -52,6 +57,7 @@ export function CsvUploadModal({ open, onClose, onSuccess }: Props) {
   const [columns, setColumns] = useState<ColumnDef[]>([]);
   const [tableName, setTableName] = useState("");
   const [indexType, setIndexType] = useState("bplus");
+  const [secondaryIndexes, setSecondaryIndexes] = useState<SecondaryIndex[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +69,7 @@ export function CsvUploadModal({ open, onClose, onSuccess }: Props) {
     setColumns([]);
     setTableName("");
     setIndexType("bplus");
+    setSecondaryIndexes([]);
     setError(null);
   }
 
@@ -131,6 +138,7 @@ export function CsvUploadModal({ open, onClose, onSuccess }: Props) {
       form.append("fields", JSON.stringify(
         columns.map((c) => ({ name: c.name, type: c.type, size: c.size, primary_key: c.primaryKey }))
       ));
+      form.append("secondary_indexes", JSON.stringify(secondaryIndexes));
       const base = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api/v1";
       const res = await fetch(`${base}/tables/upload`, { method: "POST", body: form });
       const body = await res.json();
@@ -260,6 +268,55 @@ export function CsvUploadModal({ open, onClose, onSuccess }: Props) {
                       </label>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Secondary indexes */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs text-slate-400">Índices secundarios (opcional)</label>
+                  <button
+                    type="button"
+                    onClick={() => setSecondaryIndexes((p) => [...p, { column: columns[0]?.name ?? "", index_type: "bplus" }])}
+                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    <Plus size={12} /> Agregar índice
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  {secondaryIndexes.map((si, i) => (
+                    <div key={i} className="flex gap-2 items-center bg-slate-900 rounded-lg px-3 py-2">
+                      <select
+                        value={si.column}
+                        onChange={(e) => setSecondaryIndexes((p) => p.map((x, j) => j === i ? { ...x, column: e.target.value } : x))}
+                        className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                      >
+                        {columns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+                      </select>
+                      <div className="relative">
+                        <select
+                          value={si.index_type}
+                          onChange={(e) => setSecondaryIndexes((p) => p.map((x, j) => j === i ? { ...x, index_type: e.target.value } : x))}
+                          className="appearance-none bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500 pr-6"
+                        >
+                          {INDEX_OPTIONS.filter((o) => o.value !== "rtree").map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={10} className="absolute right-1.5 top-2 text-slate-400 pointer-events-none" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSecondaryIndexes((p) => p.filter((_, j) => j !== i))}
+                        className="text-slate-500 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                  {secondaryIndexes.length === 0 && (
+                    <p className="text-xs text-slate-600 italic">Sin índices secundarios</p>
+                  )}
                 </div>
               </div>
 

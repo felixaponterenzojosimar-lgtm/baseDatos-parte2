@@ -99,12 +99,22 @@ export function Sidebar({ tables, loading, onRefresh, onDrop, onSelectTable, sel
                       >
                         <div className="px-3 pb-3 pt-1 bg-slate-900/40">
                           <ul className="space-y-0.5 mb-2">
-                            {t.columns.map((c) => (
-                              <li key={c.name} className="flex justify-between text-xs py-0.5">
-                                <span className="text-slate-300">{c.name}</span>
-                                <span className="text-slate-500 italic">{c.type}</span>
-                              </li>
-                            ))}
+                            {t.columns.map((c) => {
+                              const secIdxType = t.secondary_indexes?.[c.name];
+                              return (
+                                <li key={c.name} className="flex justify-between text-xs py-0.5 gap-1">
+                                  <span className="text-slate-300 truncate">{c.name}</span>
+                                  <span className="flex items-center gap-1 shrink-0">
+                                    <span className="text-slate-500 italic">{c.type}</span>
+                                    {secIdxType && (
+                                      <span className="px-1 py-px text-[9px] font-bold rounded bg-amber-800/60 text-amber-300 border border-amber-700/50">
+                                        2°{secIdxType.toUpperCase().slice(0,3)}
+                                      </span>
+                                    )}
+                                  </span>
+                                </li>
+                              );
+                            })}
                           </ul>
                           <div className="flex gap-1.5 mt-2">
                             {t.index_type === "rtree" && (

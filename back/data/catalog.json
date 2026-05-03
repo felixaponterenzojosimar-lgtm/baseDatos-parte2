@@ -1,5 +1,5 @@
 {
-  "lugares": {
+  "lugares2": {
     "index_type": "rtree",
     "primary_key": "id",
     "fields": [
@@ -23,6 +23,63 @@
         "type": "FLOAT",
         "size": 8
       }
-    ]
+    ],
+    "secondary_indexes": {}
+  },
+  "clinetes": {
+    "index_type": "bplus",
+    "primary_key": "id",
+    "fields": [
+      {
+        "name": "id",
+        "type": "INT",
+        "size": 4
+      },
+      {
+        "name": "nombre",
+        "type": "VARCHAR",
+        "size": 17
+      },
+      {
+        "name": "edad",
+        "type": "INT",
+        "size": 4
+      },
+      {
+        "name": "salario",
+        "type": "FLOAT",
+        "size": 8
+      }
+    ],
+    "secondary_indexes": {}
+  },
+  "clinetes2": {
+    "index_type": "bplus",
+    "primary_key": "id",
+    "fields": [
+      {
+        "name": "id",
+        "type": "INT",
+        "size": 4
+      },
+      {
+        "name": "nombre",
+        "type": "VARCHAR",
+        "size": 17
+      },
+      {
+        "name": "edad",
+        "type": "INT",
+        "size": 4
+      },
+      {
+        "name": "salario",
+        "type": "FLOAT",
+        "size": 8
+      }
+    ],
+    "secondary_indexes": {
+      "nombre": "sequential"
+    }
   }
 }

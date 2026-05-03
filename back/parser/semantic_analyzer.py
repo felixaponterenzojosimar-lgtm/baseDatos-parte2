@@ -1,8 +1,8 @@
 import re
 from .ast_nodes import (
-    CreateTableNode, DateLiteralNode, TimeLiteralNode, InsertNode, SelectAllNode,
-    SelectEqualNode, SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode,
-    SelectKNNNode, DeleteNode,
+    CreateTableNode, CreateIndexNode, DateLiteralNode, TimeLiteralNode, InsertNode,
+    SelectAllNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,
+    SelectPointRadiusNode, SelectKNNNode, DeleteNode,
 )
 
 
@@ -30,6 +30,9 @@ class SemanticAnalyzer:
             return self.validate_insert_node(node)
 
         if isinstance(node, SelectAllNode):
+            return True
+
+        if isinstance(node, CreateIndexNode):
             return True
 
         if isinstance(node, SelectEqualNode):

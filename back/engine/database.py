@@ -71,6 +71,59 @@ class Database:
             raise KeyError(f"Tabla '{name}' no existe")
         return self._tables[name]
 
+    def add_secondary_index(self, table_name: str, column: str, index_type: str) -> None:
+        """
+        Crea un índice secundario sobre `column` en la tabla `table_name`.
+        Popula el índice con todos los registros existentes.
+        """
+        table = self.get_table(table_name)
+        field_names = [f.name for f in table.schema.fields]
+        if column not in field_names:
+            raise ValueError(f"Columna '{column}' no existe en '{table_name}'")
+        if column in table.secondary_indexes:
+            raise ValueError(f"Ya existe un índice secundario en '{column}'")
+        if index_type not in self.INDEX_TYPES:
+            raise ValueError(f"index_type '{index_type}' no válido")
+        if index_type == "rtree":
+            raise ValueError("RTree no puede usarse como índice secundario")
+
+        sec_schema = Schema(table.schema.fields, column)
+        index_name = f"{table_name}_sec_{column}"
+        sec_index = self._build_index(index_name, sec_schema, index_type)
+        table.secondary_indexes[column] = sec_index
+
+        self._populate_secondary_index(table, sec_index)
+        self._save_catalog()
+
+    def _populate_secondary_index(self, table, sec_index) -> None:
+        """Inserta en sec_index todos los registros existentes de table."""
+        from ..indexes import RTree, NotSupportedError
+        from ..indexes.extendible_hashing import ExtendibleHashing
+        from ..storage.schema import FieldType
+
+        try:
+            if isinstance(table.index, RTree):
+                records = [p["record"] for p in table.index.all_points()]
+            elif isinstance(table.index, ExtendibleHashing):
+                records = table.index.scan_all()
+            else:
+                pk = table.schema.get_field(table.schema.primary_key)
+                if pk.field_type == FieldType.INT:
+                    records = table.index.range_search(-2147483648, 2147483647)
+                elif pk.field_type == FieldType.FLOAT:
+                    records = table.index.range_search(float("-inf"), float("inf"))
+                else:
+                    records = table.index.range_search("", chr(127) * pk.size)
+        except NotSupportedError:
+            records = []
+
+        from ..indexes.base_index import DuplicateKeyError
+        for record in records:
+            try:
+                sec_index.add(record)
+            except DuplicateKeyError:
+                pass
+
     def drop_table(self, name: str) -> None:
         """
         Input:  name  nombre de la tabla
@@ -82,9 +135,20 @@ class Database:
             path = os.path.join(DATA_DIR, f"{name}{suffix}.bin")
             if os.path.exists(path):
                 os.remove(path)
-        root_path = os.path.join(DATA_DIR, f"{name}.root")
-        if os.path.exists(root_path):
-            os.remove(root_path)
+        for ext in [".root"]:
+            path = os.path.join(DATA_DIR, f"{name}{ext}")
+            if os.path.exists(path):
+                os.remove(path)
+        table = self._tables[name]
+        for col in list(table.secondary_indexes.keys()):
+            idx_name = f"{name}_sec_{col}"
+            for suffix in ["", "_aux", "_dir"]:
+                path = os.path.join(DATA_DIR, f"{idx_name}{suffix}.bin")
+                if os.path.exists(path):
+                    os.remove(path)
+            root_path = os.path.join(DATA_DIR, f"{idx_name}.root")
+            if os.path.exists(root_path):
+                os.remove(root_path)
         del self._tables[name]
         self._save_catalog()
 
@@ -185,6 +249,10 @@ class Database:
                 "index_type": self._index_key(table.index),
                 "primary_key": table.schema.primary_key,
                 "fields": fields,
+                "secondary_indexes": {
+                    col: self._index_key(idx)
+                    for col, idx in table.secondary_indexes.items()
+                },
             }
             data[name] = entry
         with open(self._catalog_path, "w", encoding="utf-8") as f:
@@ -205,7 +273,12 @@ class Database:
                     fields.append(Field(fd["name"], ft))
             schema = Schema(fields, entry["primary_key"])
             index = self._build_index(name, schema, entry["index_type"])
-            self._tables[name] = Table(name, schema, index)
+            table = Table(name, schema, index)
+            for col, idx_type in entry.get("secondary_indexes", {}).items():
+                sec_schema = Schema(schema.fields, col)
+                idx_name = f"{name}_sec_{col}"
+                table.secondary_indexes[col] = self._build_index(idx_name, sec_schema, idx_type)
+            self._tables[name] = table
 
     @staticmethod
     def _index_key(index) -> str:

@@ -6,6 +6,7 @@ import json as _json
 import os
 
 from ..engine import Database, Executor
+from ..concurrency import Scheduler as ConcurrencyScheduler
 from ..parser import Parser, ParseError
 from ..parser.semantic_analyzer import SemanticError
 from ..engine.executor import ExecutionError
@@ -13,8 +14,8 @@ from ..indexes import SequentialFile, ExtendibleHashing, BPlusTree, RTree
 from ..storage.schema import Field, FieldType, Schema
 from ..engine.database import DATA_DIR
 from ..parser.ast_nodes import (
-    CreateTableNode, InsertNode, SelectAllNode, SelectEqualNode, SelectComparisonNode,
-    SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
+    CreateTableNode, CreateIndexNode, InsertNode, SelectAllNode, SelectEqualNode,
+    SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
 )
 
 app = FastAPI(title="Mini-SGBD API")
@@ -36,6 +37,7 @@ _metrics_history: deque = deque(maxlen=1000)
 
 _NODE_OP = {
     CreateTableNode:       "CREATE TABLE",
+    CreateIndexNode:       "CREATE INDEX",
     InsertNode:            "INSERT",
     SelectAllNode:         "SELECT ALL",
     SelectEqualNode:       "SELECT",
@@ -67,6 +69,10 @@ class QueryRequest(BaseModel):
     sql: str
 
 
+class ScheduleRequest(BaseModel):
+    schedule: str
+
+
 # ------------------------------------------------------------------
 # Endpoints
 # ------------------------------------------------------------------
@@ -90,7 +96,7 @@ def run_query(req: QueryRequest):
     # Mensaje para operaciones que no retornan filas
     message = None
     node_type = type(node)
-    if node_type in (CreateTableNode, InsertNode):
+    if node_type in (CreateTableNode, CreateIndexNode, InsertNode):
         message = f"{_NODE_OP[node_type]} ejecutado correctamente"
     elif node_type == DeleteNode:
         deleted = rows[0]["deleted"] if rows else False
@@ -129,11 +135,16 @@ def list_tables():
             {"name": f.name, "type": f.field_type.value}
             for f in table.schema.fields
         ]
+        secondary = {
+            col: _index_type_name(idx)
+            for col, idx in table.secondary_indexes.items()
+        }
         tables.append({
-            "name":       name,
-            "columns":    columns,
-            "index_type": _index_type_name(table.index),
-            "data_file":  table.index.pm.filepath,
+            "name":              name,
+            "columns":           columns,
+            "index_type":        _index_type_name(table.index),
+            "data_file":         table.index.pm.filepath,
+            "secondary_indexes": secondary,
         })
     return {"tables": tables, "count": len(tables)}
 
@@ -172,14 +183,25 @@ def clear_metrics():
     return {"message": "Historial de métricas limpiado"}
 
 
+@app.post("/api/v1/concurrency/simulate")
+def simulate_schedule(req: ScheduleRequest):
+    try:
+        result = ConcurrencyScheduler().simulate(req.schedule)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result
+
+
 @app.post("/api/v1/tables/upload")
 async def upload_csv_table(
     file: UploadFile = File(...),
     table_name: str = Form(...),
     index_type: str = Form(...),
     fields: str = Form(...),
+    secondary_indexes: str = Form(default="[]"),
 ):
     fields_data = _json.loads(fields)
+    sec_indexes_data = _json.loads(secondary_indexes)
 
     schema_fields = []
     primary_key = fields_data[0]["name"]
@@ -216,5 +238,11 @@ async def upload_csv_table(
         count = db._load_csv(table, csv_path)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error cargando CSV: {e}")
+
+    for si in sec_indexes_data:
+        try:
+            db.add_secondary_index(table_name, si["column"], si["index_type"])
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Error creando índice secundario en '{si['column']}': {e}")
 
     return {"message": f"Tabla '{table_name}' creada con {count} registros", "table": table_name, "rows_loaded": count}

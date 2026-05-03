@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Database, MapPin, Upload } from "lucide-react";
+import { Database, MapPin, Upload, GitBranch } from "lucide-react";
 import { useState } from "react";
+import { ConcurrencySimulator } from "./components/ConcurrencySimulator";
 import { CsvUploadModal } from "./components/CsvUploadModal";
 import { MetricsHistory } from "./components/MetricsHistory";
 import { ResultsTable } from "./components/ResultsTable";
@@ -12,7 +13,7 @@ import { useQuery } from "./hooks/useQuery";
 import { useTables } from "./hooks/useTables";
 import type { TableInfo } from "./types/api";
 
-type Tab = "results" | "rtree" | "history";
+type Tab = "results" | "rtree" | "history" | "concurrency";
 
 const EXAMPLE_QUERIES = [
   `CREATE TABLE employees (id INT INDEX BPLUS TREE, name CHAR(50), salary REAL);`,
@@ -85,8 +86,9 @@ export default function App() {
         </>
       ),
     },
-    { key: "rtree",   label: <span className="flex items-center gap-1.5"><MapPin size={12} />R-Tree</span> },
-    { key: "history", label: "History" },
+    { key: "rtree",       label: <span className="flex items-center gap-1.5"><MapPin size={12} />R-Tree</span> },
+    { key: "history",     label: "History" },
+    { key: "concurrency", label: <span className="flex items-center gap-1.5"><GitBranch size={12} />Concurrencia</span> },
   ];
 
   return (
@@ -189,6 +191,7 @@ export default function App() {
                   : <p className="p-8 text-center text-slate-500 text-sm">Select an R-Tree table from the sidebar and click Visualize.</p>
               )}
               {activeTab === "history" && <MetricsHistory />}
+              {activeTab === "concurrency" && <ConcurrencySimulator />}
             </motion.div>
           </AnimatePresence>
         </div>

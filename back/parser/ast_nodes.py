@@ -98,3 +98,12 @@ class DeleteNode:
         self.table_name = table_name
         self.column = column
         self.value = value
+
+
+class CreateIndexNode:
+    """CREATE INDEX ON tabla (columna) USING tecnica"""
+
+    def __init__(self, table_name: str, column: str, index_type: str):
+        self.table_name = table_name
+        self.column = column
+        self.index_type = index_type

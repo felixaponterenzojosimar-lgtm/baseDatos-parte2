@@ -8,6 +8,7 @@ class TokenType(Enum):
     INSERT = auto(); INTO = auto();   VALUES = auto()
     DELETE = auto(); INDEX = auto()
     POINT = auto();  RADIUS = auto(); K = auto()
+    ON = auto();     USING = auto()
     # Tipos de índices
     SEQUENTIAL = auto(); EXTENDIBLE = auto(); HASHING = auto()
     BPLUS = auto(); TREE = auto(); RTREE = auto()
@@ -56,6 +57,7 @@ _KEYWORDS: dict[str, TokenType] = {
     "INDEX":  TokenType.INDEX,    "POINT":  TokenType.POINT,
     "RADIUS": TokenType.RADIUS,   "IN":     TokenType.IN,
     "K":      TokenType.K,
+    "ON":     TokenType.ON,       "USING":  TokenType.USING,
     "SEQUENTIAL": TokenType.SEQUENTIAL, "EXTENDIBLE": TokenType.EXTENDIBLE,
     "HASHING": TokenType.HASHING, "BPLUS": TokenType.BPLUS,
     "TREE": TokenType.TREE,       "RTREE": TokenType.RTREE,

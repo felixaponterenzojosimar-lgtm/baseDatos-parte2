@@ -16,8 +16,9 @@ export interface ColumnSchema {
 export interface TableInfo {
   name: string;
   columns: ColumnSchema[];
-  index_type: "sequential" | "isam" | "bplus" | "hash" | "rtree";
+  index_type: "sequential" | "isam" | "bplus" | "hash" | "rtree" | "hashing";
   data_file: string;
+  secondary_indexes: Record<string, string>;
 }
 
 export interface TableListResponse {
