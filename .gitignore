@@ -1,0 +1,9 @@
+# Archivos de base de datos (Persistencia)
+*.bin
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Archivos ocultos de macOS
+.DS_Store
