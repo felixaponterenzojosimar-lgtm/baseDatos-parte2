@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 import { Upload, X, ChevronDown, Plus, Trash2 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-
+import { motion } from "framer-motion";
 type FieldType = "INT" | "REAL" | "CHAR" | "BOOLEAN";
 
 interface ColumnDef {
