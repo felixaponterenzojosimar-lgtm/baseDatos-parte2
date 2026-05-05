@@ -2,7 +2,7 @@ from .lexical_analizer import Token, TokenType
 from .ast_nodes import (
     CreateTableNode, CreateIndexNode, DateLiteralNode, TimeLiteralNode, InsertNode,
     SelectAllNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,
-    SelectPointRadiusNode, SelectKNNNode, DeleteNode,
+    SelectPointRadiusNode, SelectKNNNode, DeleteNode, DropTableNode, DropIndexNode,
 )
 
 
@@ -30,6 +30,8 @@ class SyntacticAnalyzer:
                 node = self.parse_create_index()
             else:
                 node = self.parse_create_table()
+        elif tok.type == TokenType.DROP:
+            node = self.parse_drop()
         elif tok.type == TokenType.INSERT:
             node = self.parse_insert()
         elif tok.type == TokenType.SELECT:
@@ -42,6 +44,27 @@ class SyntacticAnalyzer:
         self.expect(TokenType.EOF)
         return node
 
+    def parse_drop(self):
+        self.expect(TokenType.DROP)
+        next_tok = self.peek()
+
+        if next_tok.type == TokenType.TABLE:
+            self.advance()
+            table_name = self.expect(TokenType.IDENTIFIER).value
+            return DropTableNode(table_name)
+
+        if next_tok.type == TokenType.INDEX:
+            self.advance()
+            index_name = self.expect(TokenType.IDENTIFIER).value
+            self.expect(TokenType.ON)
+            table_name = self.expect(TokenType.IDENTIFIER).value
+            return DropIndexNode(index_name, table_name)
+
+        raise SyntacticError(
+            f"Se esperaba TABLE o INDEX despues de DROP, se obtuvo '{next_tok.value}' "
+            f"en linea {next_tok.line}"
+        )
+
     def parse_create_table(self) -> CreateTableNode:
         self.expect(TokenType.CREATE)
         self.expect(TokenType.TABLE)
@@ -52,13 +75,24 @@ class SyntacticAnalyzer:
         while True:
             col_name = self.expect(TokenType.IDENTIFIER).value
             col_type = self.read_column_type()
-
-            index_type = None
-            if self.peek().type == TokenType.INDEX:
+            primary_key = False
+            primary_index_type = None
+            if self.peek().type == TokenType.PRIMARY:
                 self.advance()
-                index_type = self.read_index_type()
+                self.expect(TokenType.KEY)
+                primary_key = True
+                if self.peek().type == TokenType.USING:
+                    self.advance()
+                    primary_index_type = self.read_primary_index_type()
 
-            columns.append({"name": col_name, "type": col_type, "index": index_type})
+            columns.append(
+                {
+                    "name": col_name,
+                    "type": col_type,
+                    "primary_key": primary_key,
+                    "primary_index_type": primary_index_type,
+                }
+            )
 
             if self.peek().type == TokenType.COMMA:
                 self.advance()
@@ -78,14 +112,18 @@ class SyntacticAnalyzer:
     def parse_create_index(self) -> CreateIndexNode:
         self.expect(TokenType.CREATE)
         self.expect(TokenType.INDEX)
+        index_name = self.expect(TokenType.IDENTIFIER).value
         self.expect(TokenType.ON)
         table_name = self.expect(TokenType.IDENTIFIER).value
         self.expect(TokenType.LEFT_PARENTHESIS)
-        column = self.expect(TokenType.IDENTIFIER).value
+        columns = [self.expect(TokenType.IDENTIFIER).value]
+        if self.peek().type == TokenType.COMMA:
+            self.advance()
+            columns.append(self.expect(TokenType.IDENTIFIER).value)
         self.expect(TokenType.RIGHT_PARENTHESIS)
         self.expect(TokenType.USING)
         index_type = self.read_index_type()
-        return CreateIndexNode(table_name, column, index_type)
+        return CreateIndexNode(index_name, table_name, columns, index_type)
 
     def parse_insert(self) -> InsertNode:
         self.expect(TokenType.INSERT)
@@ -267,6 +305,25 @@ class SyntacticAnalyzer:
         raise SyntacticError(
             f"Se esperaba una técnica de índice válida, se obtuvo '{tok.value}' "
             f"({tok.type.name}) en línea {tok.line}"
+        )
+
+    def read_primary_index_type(self) -> str:
+        tok = self.peek()
+        if tok.type == TokenType.BPLUS:
+            self.advance()
+            self.expect(TokenType.TREE)
+            return "bplus"
+        if tok.type == TokenType.EXTENDIBLE:
+            self.advance()
+            self.expect(TokenType.HASHING)
+            return "hashing"
+        if tok.type == TokenType.SEQUENTIAL:
+            self.advance()
+            self.expect(TokenType.FILE)
+            return "sequential"
+        raise SyntacticError(
+            "PRIMARY KEY USING solo permite BPLUS TREE, EXTENDIBLE HASHING o "
+            f"SEQUENTIAL FILE; se obtuvo '{tok.value}' ({tok.type.name}) en lÃ­nea {tok.line}"
         )
 
     def expect(self, token_type: TokenType) -> Token:

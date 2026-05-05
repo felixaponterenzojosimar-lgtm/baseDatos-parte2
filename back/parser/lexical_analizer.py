@@ -3,35 +3,37 @@ from enum import Enum, auto
 
 class TokenType(Enum):
     # Palabras clave
-    CREATE = auto(); TABLE = auto();  FROM = auto(); FILE = auto()
+    CREATE = auto(); TABLE = auto(); FROM = auto(); FILE = auto()
+    DROP = auto()
     SELECT = auto(); WHERE = auto()
-    INSERT = auto(); INTO = auto();   VALUES = auto()
+    INSERT = auto(); INTO = auto(); VALUES = auto()
     DELETE = auto(); INDEX = auto()
-    POINT = auto();  RADIUS = auto(); K = auto()
-    ON = auto();     USING = auto()
+    POINT = auto(); RADIUS = auto(); K = auto()
+    ON = auto(); USING = auto()
+    PRIMARY = auto(); KEY = auto()
     # Tipos de índices
     SEQUENTIAL = auto(); EXTENDIBLE = auto(); HASHING = auto()
     BPLUS = auto(); TREE = auto(); RTREE = auto()
     # Tipos de datos
-    INT_TYPE = auto();      INTEGER_TYPE = auto(); SMALLINT = auto()
-    BIGINT = auto();        REAL = auto();         DOUBLE = auto()
-    PRECISION = auto();     BOOLEAN = auto();      CHAR = auto()
-    DATE = auto();          TIME = auto()
+    INT_TYPE = auto(); INTEGER_TYPE = auto(); SMALLINT = auto()
+    BIGINT = auto(); REAL = auto(); DOUBLE = auto()
+    PRECISION = auto(); BOOLEAN = auto(); CHAR = auto()
+    DATE = auto(); TIME = auto()
     # Literales
-    IDENTIFIER = auto()      # nombres de tabla/columna
+    IDENTIFIER = auto()
     INTEGER_LITERAL = auto()
     FLOAT_LITERAL = auto()
-    STRING_LITERAL = auto()     # 'texto'
+    STRING_LITERAL = auto()
     TRUE_LITERAL = auto(); FALSE_LITERAL = auto()
     # Símbolos
-    LEFT_PARENTHESIS = auto();  RIGHT_PARENTHESIS = auto()
-    COMMA = auto();   SEMICOLON = auto()
+    LEFT_PARENTHESIS = auto(); RIGHT_PARENTHESIS = auto()
+    COMMA = auto(); SEMICOLON = auto()
     ASTERISK = auto()
     # Operadores
     LESS_THAN_OR_EQUAL = auto(); GREATER_THAN_OR_EQUAL = auto()
-    LESS_THAN = auto();          GREATER_THAN = auto()
-    EQUAL = auto();              BETWEEN = auto()
-    AND = auto();                IN = auto()
+    LESS_THAN = auto(); GREATER_THAN = auto()
+    EQUAL = auto(); BETWEEN = auto()
+    AND = auto(); IN = auto()
     # Control
     EOF = auto()
 
@@ -46,28 +48,29 @@ class Token:
         return f"Token({self.type.name}, {self.value!r}, line={self.line})"
 
 
-# Mapa de palabras reservadas → TokenType
 _KEYWORDS: dict[str, TokenType] = {
-    "CREATE": TokenType.CREATE,   "TABLE":  TokenType.TABLE,
-    "FROM":   TokenType.FROM,     "FILE":   TokenType.FILE,
-    "SELECT": TokenType.SELECT,   "WHERE":  TokenType.WHERE,
-    "BETWEEN":TokenType.BETWEEN,  "AND":    TokenType.AND,
-    "INSERT": TokenType.INSERT,   "INTO":   TokenType.INTO,
-    "VALUES": TokenType.VALUES,   "DELETE": TokenType.DELETE,
-    "INDEX":  TokenType.INDEX,    "POINT":  TokenType.POINT,
-    "RADIUS": TokenType.RADIUS,   "IN":     TokenType.IN,
-    "K":      TokenType.K,
-    "ON":     TokenType.ON,       "USING":  TokenType.USING,
+    "CREATE": TokenType.CREATE, "TABLE": TokenType.TABLE,
+    "DROP": TokenType.DROP,
+    "FROM": TokenType.FROM, "FILE": TokenType.FILE,
+    "SELECT": TokenType.SELECT, "WHERE": TokenType.WHERE,
+    "BETWEEN": TokenType.BETWEEN, "AND": TokenType.AND,
+    "INSERT": TokenType.INSERT, "INTO": TokenType.INTO,
+    "VALUES": TokenType.VALUES, "DELETE": TokenType.DELETE,
+    "INDEX": TokenType.INDEX, "POINT": TokenType.POINT,
+    "RADIUS": TokenType.RADIUS, "IN": TokenType.IN,
+    "K": TokenType.K,
+    "ON": TokenType.ON, "USING": TokenType.USING,
+    "PRIMARY": TokenType.PRIMARY, "KEY": TokenType.KEY,
     "SEQUENTIAL": TokenType.SEQUENTIAL, "EXTENDIBLE": TokenType.EXTENDIBLE,
     "HASHING": TokenType.HASHING, "BPLUS": TokenType.BPLUS,
-    "TREE": TokenType.TREE,       "RTREE": TokenType.RTREE,
-    "INT":    TokenType.INT_TYPE,     "INTEGER": TokenType.INTEGER_TYPE,
-    "SMALLINT": TokenType.SMALLINT,   "BIGINT": TokenType.BIGINT,
-    "REAL":   TokenType.REAL,         "DOUBLE": TokenType.DOUBLE,
+    "TREE": TokenType.TREE, "RTREE": TokenType.RTREE,
+    "INT": TokenType.INT_TYPE, "INTEGER": TokenType.INTEGER_TYPE,
+    "SMALLINT": TokenType.SMALLINT, "BIGINT": TokenType.BIGINT,
+    "REAL": TokenType.REAL, "DOUBLE": TokenType.DOUBLE,
     "PRECISION": TokenType.PRECISION, "BOOLEAN": TokenType.BOOLEAN,
-    "CHAR":   TokenType.CHAR,         "DATE": TokenType.DATE,
-    "TIME":   TokenType.TIME,
-    "TRUE":   TokenType.TRUE_LITERAL, "FALSE": TokenType.FALSE_LITERAL,
+    "CHAR": TokenType.CHAR, "DATE": TokenType.DATE,
+    "TIME": TokenType.TIME,
+    "TRUE": TokenType.TRUE_LITERAL, "FALSE": TokenType.FALSE_LITERAL,
 }
 
 _TWO_CHAR_OPERATORS: dict[str, TokenType] = {
@@ -105,10 +108,6 @@ class LexicalAnalizer:
         self.sql = ""
         self.pos = 0
         self.line = 1
-
-    # ------------------------------------------------------------------
-    # API pública
-    # ------------------------------------------------------------------
 
     def tokenize(self, sql: str) -> list:
         self.sql = sql
@@ -152,18 +151,18 @@ class LexicalAnalizer:
         tokens.append(Token(TokenType.EOF, None, self.line))
         return tokens
 
-    # ------------------------------------------------------------------
-    # Métodos de lectura de tokens
-    # ------------------------------------------------------------------
-
     def read_string(self) -> Token:
-        self.pos += 1  # saltar comilla de apertura
-        start = self.pos
+        self.pos += 1
+        value = []
         while self.pos < len(self.sql):
             if self.sql[self.pos] == "'":
-                value = self.sql[start : self.pos]
-                self.pos += 1  # saltar comilla de cierre
-                return Token(TokenType.STRING_LITERAL, value, self.line)
+                if self.peek(self.pos + 1) == "'":
+                    value.append("'")
+                    self.pos += 2
+                    continue
+                self.pos += 1
+                return Token(TokenType.STRING_LITERAL, "".join(value), self.line)
+            value.append(self.sql[self.pos])
             self.pos += 1
         raise LexError(f"Cadena sin cerrar en línea {self.line}")
 
@@ -192,8 +191,8 @@ class LexicalAnalizer:
             break
 
         if has_decimal_point:
-            return Token(TokenType.FLOAT_LITERAL, float(self.sql[start : self.pos]), self.line)
-        return Token(TokenType.INTEGER_LITERAL, int(self.sql[start : self.pos]), self.line)
+            return Token(TokenType.FLOAT_LITERAL, float(self.sql[start:self.pos]), self.line)
+        return Token(TokenType.INTEGER_LITERAL, int(self.sql[start:self.pos]), self.line)
 
     def read_identifier_or_keyword(self) -> Token:
         start = self.pos
@@ -201,7 +200,7 @@ class LexicalAnalizer:
             self.sql[self.pos].isalnum() or self.sql[self.pos] == "_"
         ):
             self.pos += 1
-        word = self.sql[start : self.pos]
+        word = self.sql[start:self.pos]
         upper = word.upper()
         if upper in _KEYWORDS:
             return Token(_KEYWORDS[upper], upper, self.line)
@@ -229,10 +228,6 @@ class LexicalAnalizer:
             self.pos += 1
             return Token(_DELIMITERS[ch], ch, self.line)
         raise LexError(f"Carácter inesperado '{ch}' en línea {self.line}")
-    
-    # ------------------------------------------------------------------
-    # Métodos auxliares
-    # ------------------------------------------------------------------
 
     def read_whitespace(self):
         while self.pos < len(self.sql) and self.sql[self.pos] in " \t\r\n":

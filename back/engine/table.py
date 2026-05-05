@@ -8,11 +8,13 @@ class Table:
     El índice es polimórfico → el Executor llama siempre igual.
     """
 
-    def __init__(self, name: str, schema: Schema, index: Index):
+    def __init__(self, name: str, schema: Schema, index: Index, column_definitions: list, primary_index_type: str):
         self.name = name
         self.schema = schema
         self.index = index  # SequentialFile | ExtendibleHashing | BPlusTree | RTree
-        self.secondary_indexes: dict[str, Index] = {}  # column -> Index
+        self.column_definitions = column_definitions
+        self.primary_index_type = primary_index_type
+        self.secondary_indexes: dict[str, dict] = {}  # index_name -> {"index", "type", "columns"}
 
     def __repr__(self):
         return f"Table('{self.name}', {self.schema}, index={type(self.index).__name__})"

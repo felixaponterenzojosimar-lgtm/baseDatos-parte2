@@ -2,7 +2,7 @@ import re
 from .ast_nodes import (
     CreateTableNode, CreateIndexNode, DateLiteralNode, TimeLiteralNode, InsertNode,
     SelectAllNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,
-    SelectPointRadiusNode, SelectKNNNode, DeleteNode,
+    SelectPointRadiusNode, SelectKNNNode, DeleteNode, DropTableNode, DropIndexNode,
 )
 
 
@@ -12,7 +12,7 @@ class SemanticError(Exception):
 
 class SemanticAnalyzer:
     """
-    Verificador semántico inicial para el subconjunto SQL del proyecto.
+    Verificador semantico inicial para el subconjunto SQL del proyecto.
     Recibe un nodo AST y retorna True si cumple las restricciones
     actualmente verificables sin depender del motor.
     """
@@ -26,13 +26,19 @@ class SemanticAnalyzer:
         if isinstance(node, CreateTableNode):
             return self.validate_create_table_node(node)
 
+        if isinstance(node, CreateIndexNode):
+            return self.validate_create_index_node(node)
+
         if isinstance(node, InsertNode):
             return self.validate_insert_node(node)
 
         if isinstance(node, SelectAllNode):
             return True
 
-        if isinstance(node, CreateIndexNode):
+        if isinstance(node, DropTableNode):
+            return True
+
+        if isinstance(node, DropIndexNode):
             return True
 
         if isinstance(node, SelectEqualNode):
@@ -53,28 +59,71 @@ class SemanticAnalyzer:
         if isinstance(node, DeleteNode):
             return self.validate_delete_node(node)
 
-        self.error_message = f"No existe verificación semántica para el nodo {type(node).__name__}"
+        self.error_message = f"No existe verificacion semantica para el nodo {type(node).__name__}"
         return False
 
     def validate_create_table_node(self, node: CreateTableNode) -> bool:
         names = set()
+        primary_key_count = 0
+
         for column in node.columns:
             name = column["name"]
             column_type = column["type"]
+            primary_index_type = column.get("primary_index_type")
 
             if name in names:
-                self.error_message = f"La columna '{name}' está repetida en CREATE TABLE"
+                self.error_message = f"La columna '{name}' esta repetida en CREATE TABLE"
                 return False
             names.add(name)
+
+            if column.get("primary_key"):
+                primary_key_count += 1
+            elif primary_index_type is not None:
+                self.error_message = (
+                    f"La columna '{name}' no puede declarar PRIMARY KEY USING sin PRIMARY KEY"
+                )
+                return False
 
             if column_type.startswith("CHAR(") and column_type.endswith(")"):
                 size = int(column_type[5:-1])
                 if size <= 0:
-                    self.error_message = "CHAR(n) debe usar un tamaño entero mayor que cero"
+                    self.error_message = "CHAR(n) debe usar un tamano entero mayor que cero"
                     return False
 
+            if primary_index_type not in (None, "bplus", "hashing", "sequential"):
+                self.error_message = (
+                    "PRIMARY KEY USING solo permite BPLUS TREE, EXTENDIBLE HASHING o "
+                    "SEQUENTIAL FILE"
+                )
+                return False
+
+        if primary_key_count == 0:
+            self.error_message = "CREATE TABLE debe declarar exactamente una columna PRIMARY KEY"
+            return False
+
+        if primary_key_count > 1:
+            self.error_message = "CREATE TABLE no puede declarar mas de una columna PRIMARY KEY"
+            return False
+
         if node.from_file is not None and node.from_file == "":
-            self.error_message = "FROM FILE debe recibir una ruta no vacía"
+            self.error_message = "FROM FILE debe recibir una ruta no vacia"
+            return False
+
+        return True
+
+    def validate_create_index_node(self, node: CreateIndexNode) -> bool:
+        if len(set(node.columns)) != len(node.columns):
+            self.error_message = "CREATE INDEX no puede repetir columnas en la misma definicion"
+            return False
+
+        if node.index_type == "rtree":
+            if len(node.columns) != 2:
+                self.error_message = "CREATE INDEX USING RTREE debe declarar exactamente dos columnas"
+                return False
+            return True
+
+        if len(node.columns) != 1:
+            self.error_message = "CREATE INDEX escalar debe declarar exactamente una columna"
             return False
 
         return True
@@ -106,13 +155,13 @@ class SemanticAnalyzer:
         time_range = isinstance(node.begin, TimeLiteralNode) and isinstance(node.end, TimeLiteralNode)
 
         if begin_type != end_type and not numeric_range and not date_range and not time_range:
-            self.error_message = "BETWEEN debe comparar literales compatibles entre sí"
+            self.error_message = "BETWEEN debe comparar literales compatibles entre si"
             return False
 
         begin_value = self.literal_value(node.begin)
         end_value = self.literal_value(node.end)
         if begin_value > end_value:
-            self.error_message = "BETWEEN debe usar un límite inferior menor o igual al superior"
+            self.error_message = "BETWEEN debe usar un limite inferior menor o igual al superior"
             return False
 
         return True
@@ -122,11 +171,11 @@ class SemanticAnalyzer:
         y = node.point[1]
 
         if type(x) not in (int, float) or type(y) not in (int, float):
-            self.error_message = "POINT(x, y) debe usar coordenadas numéricas"
+            self.error_message = "POINT(x, y) debe usar coordenadas numericas"
             return False
 
         if type(node.radius) not in (int, float) or node.radius <= 0:
-            self.error_message = "RADIUS debe ser un valor numérico positivo"
+            self.error_message = "RADIUS debe ser un valor numerico positivo"
             return False
 
         return True
@@ -136,7 +185,7 @@ class SemanticAnalyzer:
         y = node.point[1]
 
         if type(x) not in (int, float) or type(y) not in (int, float):
-            self.error_message = "POINT(x, y) debe usar coordenadas numéricas"
+            self.error_message = "POINT(x, y) debe usar coordenadas numericas"
             return False
 
         if type(node.k) is not int or node.k <= 0:
@@ -151,7 +200,7 @@ class SemanticAnalyzer:
     def validate_literal(self, value) -> bool:
         if isinstance(value, DateLiteralNode):
             if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value.value) is None:
-                self.error_message = "DATE debe tener el formato semántico yyyy-mm-dd"
+                self.error_message = "DATE debe tener el formato semantico yyyy-mm-dd"
                 return False
 
             year, month, day = value.value.split("-")
@@ -177,12 +226,12 @@ class SemanticAnalyzer:
                 12: 31,
             }
             if day < 1 or day > days_in_month[month]:
-                self.error_message = "DATE debe contener un día válido para el mes y año indicados"
+                self.error_message = "DATE debe contener un dia valido para el mes y ano indicados"
                 return False
 
         if isinstance(value, TimeLiteralNode):
             if re.fullmatch(r"\d{2}:\d{2}:\d{2}", value.value) is None:
-                self.error_message = "TIME debe tener el formato semántico hh:mm:ss"
+                self.error_message = "TIME debe tener el formato semantico hh:mm:ss"
                 return False
 
             hour, minute, second = value.value.split(":")
@@ -190,7 +239,7 @@ class SemanticAnalyzer:
             minute = int(minute)
             second = int(second)
             if hour < 0 or hour > 23 or minute < 0 or minute > 59 or second < 0 or second > 59:
-                self.error_message = "TIME debe contener hora, minuto y segundo dentro de rangos válidos"
+                self.error_message = "TIME debe contener hora, minuto y segundo dentro de rangos validos"
                 return False
 
         return True

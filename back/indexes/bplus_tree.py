@@ -39,6 +39,50 @@ class BPlusTree(Index):
             if k == key: return node["children"][i]
         return None
 
+    def find_record_ref(self, key):
+        leaf_id = self._find_leaf(key)
+        if leaf_id is None:
+            return None
+        node = self._read_node(leaf_id)
+        for slot, current_key in enumerate(node["keys"]):
+            if current_key == key:
+                return {"page_id": leaf_id, "slot": slot, "source_id": 0}
+        return None
+
+    def add_ref(self, key, primary_key_value) -> None:
+        record = {
+            self.schema.primary_key: key,
+            self.schema.fields[1].name: primary_key_value,
+        }
+        self.add(record)
+
+    def remove_ref(self, primary_key_value) -> bool:
+        pk_field_name = self.schema.fields[1].name
+        for item in self.iter_record_refs():
+            if item["record"][pk_field_name] == primary_key_value:
+                key = item["record"][self.schema.primary_key]
+                return self.remove(key)
+        return False
+
+    def read_record_ref(self, page_id: int, slot: int, source_id: int = 0) -> dict:
+        node = self._read_node(page_id)
+        if not node["is_leaf"]:
+            raise ValueError("La referencia apunta a una página interna de BPlusTree")
+        if slot < 0 or slot >= len(node["children"]):
+            raise ValueError("Slot fuera de rango en BPlusTree")
+        return node["children"][slot]
+
+    def iter_record_refs(self):
+        if self.root_id is None:
+            return
+        curr_id = self._leftmost_leaf()
+        while curr_id is not None:
+            node = self._read_node(curr_id)
+            for slot, record in enumerate(node["children"]):
+                yield {"record": record, "page_id": curr_id, "slot": slot, "source_id": 0}
+            next_p = node.get("next_leaf", 0)
+            curr_id = next_p if next_p != 0 else None
+
     def add(self, record):
         key = record[self.schema.primary_key]
         if self.root_id is None:
@@ -172,6 +216,16 @@ class BPlusTree(Index):
         self._write_node(left_id, left)
 
     # --- Métodos Internos ---
+    def _leftmost_leaf(self):
+        if self.root_id is None:
+            return None
+        curr_id = self.root_id
+        while True:
+            node = self._read_node(curr_id)
+            if node["is_leaf"]:
+                return curr_id
+            curr_id = node["children"][0]
+
     def _find_leaf(self, key):
         if self.root_id is None: return None
         curr_id = self.root_id

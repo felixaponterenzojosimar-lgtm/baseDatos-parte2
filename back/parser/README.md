@@ -14,12 +14,13 @@ El análisis léxico está implementado en `lexical_analizer.py`. Su trabajo es 
 
 Actualmente el lexer reconoce:
 
-- Sentencias `CREATE TABLE`, `SELECT`, `INSERT` y `DELETE`
+- Sentencias `CREATE TABLE`, `CREATE INDEX`, `SELECT`, `INSERT` y `DELETE`
 - Identificadores de tablas y columnas con la forma `[A-Za-z_][A-Za-z0-9_]*`
 - Literales enteros, flotantes, cadenas entre comillas simples y booleanos
 - Literales tipados para `DATE` y `TIME` en la forma `DATE 'yyyy-mm-dd'` y `TIME 'hh:mm:ss'`
 - Delimitadores `(`, `)`, `,`, `;` y `*`
 - Operadores `=`, `<`, `>`, `<=`, `>=`, `BETWEEN`, `AND`, `IN`
+- Palabras clave `PRIMARY KEY` y `USING` para la declaracion obligatoria de la llave primaria y su tecnica de indice opcional
 - Técnicas de índice expresadas como combinaciones de keywords: `RTREE`, `BPLUS TREE`, `EXTENDIBLE HASHING` y `SEQUENTIAL FILE`
 
 El lexer también soporta los tipos de datos de longitud fija acordados para el proyecto. Esta restricción se mantiene porque la capa de almacenamiento trabaja con registros de tamaño fijo.
@@ -56,28 +57,124 @@ En la estructura actual del módulo:
 - `parser.py` traduce los errores sintácticos internos a `ParseError` para conservar la API pública estable
 - `semantic_analyzer.py` ejecuta la validación semántica posterior sobre el AST
 
+Gramática actual del subconjunto:
+
+```ebnf
+query ::= create_table_stmt
+        | create_index_stmt
+        | drop_table_stmt
+        | drop_index_stmt
+        | insert_stmt
+        | select_stmt
+        | delete_stmt
+
+create_table_stmt ::= CREATE TABLE identifier LEFT_PARENTHESIS column_def (COMMA column_def)* RIGHT_PARENTHESIS from_file_clause SEMICOLON
+
+column_def ::= identifier data_type primary_key_clause
+
+primary_key_clause ::= PRIMARY KEY primary_index_clause
+                     | epsilon
+
+primary_index_clause ::= USING primary_index_type
+                       | epsilon
+
+primary_index_type ::= BPLUS TREE
+                     | EXTENDIBLE HASHING
+                     | SEQUENTIAL FILE
+
+from_file_clause ::= FROM FILE string_literal
+                   | epsilon
+
+create_index_stmt ::= CREATE INDEX identifier ON identifier LEFT_PARENTHESIS index_column_list RIGHT_PARENTHESIS USING index_type SEMICOLON
+
+drop_table_stmt ::= DROP TABLE identifier SEMICOLON
+
+drop_index_stmt ::= DROP INDEX identifier ON identifier SEMICOLON
+
+index_column_list ::= identifier
+                    | identifier COMMA identifier
+
+index_type ::= BPLUS TREE
+             | EXTENDIBLE HASHING
+             | SEQUENTIAL FILE
+             | RTREE
+
+insert_stmt ::= INSERT INTO identifier VALUES LEFT_PARENTHESIS literal (COMMA literal)* RIGHT_PARENTHESIS SEMICOLON
+
+select_stmt ::= SELECT ASTERISK FROM identifier select_tail
+
+select_tail ::= SEMICOLON
+              | WHERE identifier select_predicate SEMICOLON
+
+select_predicate ::= EQUAL literal
+                   | comparison_operator literal
+                   | BETWEEN literal AND literal
+                   | IN LEFT_PARENTHESIS POINT LEFT_PARENTHESIS literal COMMA literal RIGHT_PARENTHESIS COMMA spatial_predicate RIGHT_PARENTHESIS
+
+comparison_operator ::= LESS_THAN
+                      | GREATER_THAN
+                      | LESS_THAN_OR_EQUAL
+                      | GREATER_THAN_OR_EQUAL
+
+spatial_predicate ::= RADIUS literal
+                    | K integer_literal
+
+delete_stmt ::= DELETE FROM identifier WHERE identifier EQUAL literal SEMICOLON
+
+data_type ::= INT_TYPE
+            | INTEGER_TYPE
+            | SMALLINT
+            | BIGINT
+            | REAL
+            | DOUBLE PRECISION
+            | BOOLEAN
+            | CHAR LEFT_PARENTHESIS integer_literal RIGHT_PARENTHESIS
+            | DATE
+            | TIME
+
+literal ::= integer_literal
+          | float_literal
+          | string_literal
+          | TRUE_LITERAL
+          | FALSE_LITERAL
+          | DATE string_literal
+          | TIME string_literal
+```
+
 Sentencias soportadas en el estado actual:
 
-1. `CREATE TABLE <name> (<column> <type> [INDEX <technique>], ...) [FROM FILE <path>];`
-2. `SELECT * FROM <table> WHERE <column> = <value>;`
-3. `SELECT * FROM <table> WHERE <column> <comparison_operator> <value>;`
-4. `SELECT * FROM <table> WHERE <column> BETWEEN <value_1> AND <value_2>;`
-5. `SELECT * FROM <table> WHERE <column> IN (POINT(<x>, <y>), RADIUS <r>);`
-6. `SELECT * FROM <table> WHERE <column> IN (POINT(<x>, <y>), K <k>);`
-7. `INSERT INTO <table> VALUES (...);`
-8. `DELETE FROM <table> WHERE <column> = <value>;`
+1. `CREATE TABLE <name> (<column> <type> [PRIMARY KEY [USING <primary_index_technique>]], ...) [FROM FILE <path>];`
+2. `CREATE INDEX <index_name> ON <table> (<column>) USING <single_column_technique>;`
+3. `CREATE INDEX <index_name> ON <table> (<column_1>, <column_2>) USING RTREE;`
+4. `DROP TABLE <table>;`
+5. `DROP INDEX <index_name> ON <table>;`
+6. `SELECT * FROM <table> WHERE <column> = <value>;`
+7. `SELECT * FROM <table> WHERE <column> <comparison_operator> <value>;`
+8. `SELECT * FROM <table> WHERE <column> BETWEEN <value_1> AND <value_2>;`
+9. `SELECT * FROM <table> WHERE <column> IN (POINT(<x>, <y>), RADIUS <r>);`
+10. `SELECT * FROM <table> WHERE <column> IN (POINT(<x>, <y>), K <k>);`
+11. `INSERT INTO <table> VALUES (...);`
+12. `DELETE FROM <table> WHERE <column> = <value>;`
 
 Reglas sintácticas ya consolidadas:
 
 - Cada entrada del parser contiene una sola consulta
 - El punto y coma final es obligatorio
 - `CREATE TABLE` acepta `FROM FILE` solo con una cadena entre comillas simples
+- `CREATE TABLE` ya no declara índices; solo esquema y `PRIMARY KEY`
+- `PRIMARY KEY USING` solo permite `BPLUS TREE`, `EXTENDIBLE HASHING` o `SEQUENTIAL FILE`
+- `CREATE INDEX` exige nombre explícito del índice y separa los índices escalares de `RTREE`
+- `DROP INDEX` exige nombre explícito del índice y nombre de tabla
 - `DELETE` solo acepta comparación por igualdad
 - `SELECT` acepta `=`, `<`, `>`, `<=`, `>=`, `BETWEEN` y las dos variantes espaciales con `POINT`
+- La llave primaria puede usarse tanto para búsquedas exactas como para búsquedas por rango
 
 Nodos AST actualmente definidos:
 
 - `CreateTableNode`
+- `CreateIndexNode`
+- `DropTableNode`
+- `DropIndexNode`
 - `InsertNode`
 - `SelectEqualNode`
 - `SelectComparisonNode`
@@ -95,7 +192,11 @@ Por el momento, el parser valida estructura y forma de los tokens, y además pue
 Restricciones semánticas implementadas actualmente:
 
 - Verificar que no existan nombres de columna repetidos dentro de una misma tabla
+- Verificar que `CREATE TABLE` declare exactamente una columna `PRIMARY KEY`
+- Verificar que `PRIMARY KEY USING` solo use una tecnica de indice primaria permitida
 - Verificar que `CHAR(n)` use un tamaño entero positivo mayor que cero
+- Verificar que `CREATE INDEX USING RTREE` declare exactamente dos columnas distintas
+- Verificar que `CREATE INDEX` escalar declare exactamente una columna
 - Verificar que `BETWEEN` reciba dos literales comparables entre sí
 - Verificar que `K` reciba un entero positivo en búsquedas `IN (POINT(...), K ...)`
 - Verificar que `RADIUS` reciba un valor numérico positivo
@@ -106,6 +207,7 @@ Restricciones semánticas implementadas actualmente:
 Restricciones cubiertas actualmente por el análisis sintáctico:
 
 - Verificar que `CREATE TABLE` defina al menos una columna
+- Verificar que `PRIMARY KEY` esté escrita como palabra compuesta completa
 - Verificar que una técnica de índice compuesta esté completa y sea coherente con la gramática aceptada
 - Verificar que `DELETE` y `SELECT` usen operadores permitidos para el subconjunto SQL definido
 
