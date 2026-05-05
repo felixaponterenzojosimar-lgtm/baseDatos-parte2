@@ -1,9 +1,9 @@
 class CreateTableNode:
-    """CREATE TABLE nombre (col tipo [INDEX tecnica], ...) [FROM FILE path]"""
+    """CREATE TABLE nombre (col tipo [PRIMARY KEY [USING idx]], ...) [FROM FILE path]"""
 
     def __init__(self, table_name: str, columns: list, from_file: str = None):
         self.table_name = table_name
-        self.columns = columns      # [{"name": str, "type": str, "index": str|None}]
+        self.columns = columns      # [{"name": str, "type": str, "primary_key": bool, "primary_index_type": str | None}]
         self.from_file = from_file
 
 
@@ -101,9 +101,25 @@ class DeleteNode:
 
 
 class CreateIndexNode:
-    """CREATE INDEX ON tabla (columna) USING tecnica"""
+    """CREATE INDEX nombre ON tabla (columna[, columna]) USING tecnica"""
 
-    def __init__(self, table_name: str, column: str, index_type: str):
+    def __init__(self, index_name: str, table_name: str, columns: list[str], index_type: str):
+        self.index_name = index_name
         self.table_name = table_name
-        self.column = column
+        self.columns = columns
         self.index_type = index_type
+
+
+class DropTableNode:
+    """DROP TABLE nombre"""
+
+    def __init__(self, table_name: str):
+        self.table_name = table_name
+
+
+class DropIndexNode:
+    """DROP INDEX nombre ON tabla"""
+
+    def __init__(self, index_name: str, table_name: str):
+        self.index_name = index_name
+        self.table_name = table_name

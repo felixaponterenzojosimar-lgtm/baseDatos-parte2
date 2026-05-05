@@ -2,25 +2,30 @@ from .lexical_analizer import LexicalAnalizer, Token, TokenType, LexError
 from .parser import Parser, ParseError
 from .semantic_analyzer import SemanticAnalyzer, SemanticError
 from .ast_nodes import (
-    CreateTableNode, DateLiteralNode, TimeLiteralNode, InsertNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,
-    SelectPointRadiusNode, SelectKNNNode, DeleteNode,
+    CreateTableNode, CreateIndexNode, DateLiteralNode, TimeLiteralNode, InsertNode,
+    SelectEqualNode, SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode,
+    SelectKNNNode, DeleteNode, DropTableNode, DropIndexNode,
 )
 
 
 if __name__ == "__main__":
     lexer_valid_examples = [
-        "CREATE TABLE single_column (id INT);",
-        "CREATE TABLE single_indexed_column (id INT INDEX RTREE);",
-        "CREATE TABLE two_columns_no_index (id INT, created_at DATE);",
-        "CREATE TABLE mixed_indexes (id INT INDEX BPLUS TREE, active BOOLEAN, score REAL INDEX SEQUENTIAL FILE);",
-        "CREATE TABLE many_columns (id INT INDEX BPLUS TREE, age SMALLINT, salary DOUBLE PRECISION, active BOOLEAN, code CHAR(8), created_at DATE, created_time TIME) FROM FILE 'data.csv';",
-        "CREATE TABLE no_indexes (id INTEGER, name CHAR(12), birth_date DATE, login_time TIME);",
+        "CREATE TABLE users (id INT PRIMARY KEY, name CHAR(10));",
+        "CREATE TABLE users_hash (id INT PRIMARY KEY USING EXTENDIBLE HASHING, name CHAR(10));",
+        "CREATE TABLE places (id INT PRIMARY KEY, lat REAL, lon REAL) FROM FILE 'data.csv';",
+        "CREATE INDEX idx_users_id ON users (id) USING BPLUS TREE;",
+        "CREATE INDEX idx_users_name ON users (name) USING EXTENDIBLE HASHING;",
+        "CREATE INDEX idx_users_created_at ON users (created_at) USING SEQUENTIAL FILE;",
+        "CREATE INDEX idx_places_coords ON places (lat, lon) USING RTREE;",
+        "DROP TABLE users;",
+        "DROP INDEX idx_users_id ON users;",
         "SELECT * FROM users WHERE id = 100;",
         "SELECT * FROM users WHERE id >= 100;",
         "SELECT * FROM users WHERE id BETWEEN 10 AND 20;",
         "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), RADIUS 3.2);",
         "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), K 5);",
         "INSERT INTO users VALUES (1, 12.5, 7.8);",
+        "INSERT INTO users VALUES ('Farfetchd''s leek');",
         "INSERT INTO users VALUES (TRUE, DATE '2026-04-19', TIME '10:30:00');",
         "SELECT * FROM users WHERE created_at = DATE '2026-04-19';",
         "SELECT * FROM users WHERE created_time = TIME '10:30:00';",
@@ -28,23 +33,31 @@ if __name__ == "__main__":
     ]
 
     lexer_rejected_examples = [
-        "CREATE TABLE users (id INT, name CHAR(10)) @ FROM FILE 'data.csv';",
+        "CREATE TABLE users (id INT PRIMARY KEY, name CHAR(10)) @ FROM FILE 'data.csv';",
         "SELECT * FROM users WHERE id = 100 #;",
         "INSERT INTO users VALUES (1, 12.5, 7.8$);",
         "DELETE FROM users WHERE id = 10 ?;",
     ]
 
     parser_valid_examples = [
-        "CREATE TABLE single_column (id INT);",
-        "CREATE TABLE single_indexed_column (id INT INDEX RTREE);",
-        "CREATE TABLE mixed_indexes (id INT INDEX BPLUS TREE, active BOOLEAN, score REAL INDEX SEQUENTIAL FILE);",
-        "CREATE TABLE many_columns (id INT INDEX BPLUS TREE, age SMALLINT, salary DOUBLE PRECISION, active BOOLEAN, code CHAR(8), created_at DATE, created_time TIME) FROM FILE 'data.csv';",
+        "CREATE TABLE users (id INT PRIMARY KEY);",
+        "CREATE TABLE users_hash (id INT PRIMARY KEY USING EXTENDIBLE HASHING, name CHAR(10));",
+        "CREATE TABLE users_seq (id INT PRIMARY KEY USING SEQUENTIAL FILE, name CHAR(10));",
+        "CREATE TABLE users_bplus (id INT PRIMARY KEY USING BPLUS TREE, name CHAR(10));",
+        "CREATE TABLE users (id INT PRIMARY KEY, name CHAR(10), created_at DATE) FROM FILE 'data.csv';",
+        "CREATE INDEX idx_users_id ON users (id) USING BPLUS TREE;",
+        "CREATE INDEX idx_users_name ON users (name) USING EXTENDIBLE HASHING;",
+        "CREATE INDEX idx_users_created_at ON users (created_at) USING SEQUENTIAL FILE;",
+        "CREATE INDEX idx_places_coords ON places (lat, lon) USING RTREE;",
+        "DROP TABLE users;",
+        "DROP INDEX idx_users_id ON users;",
         "SELECT * FROM users WHERE id = 100;",
         "SELECT * FROM users WHERE id >= 100;",
         "SELECT * FROM users WHERE id BETWEEN 10 AND 20;",
         "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), RADIUS 3.2);",
         "SELECT * FROM users WHERE location IN (POINT(12.5, 7.8), K 5);",
         "INSERT INTO users VALUES (1, 12.5, 7.8);",
+        "INSERT INTO users VALUES ('Farfetchd''s leek');",
         "INSERT INTO users VALUES (TRUE, DATE '2026-04-19', TIME '10:30:00');",
         "SELECT * FROM users WHERE created_at = DATE '2026-04-19';",
         "SELECT * FROM users WHERE created_time = TIME '10:30:00';",
@@ -54,24 +67,39 @@ if __name__ == "__main__":
     parser_rejected_examples = [
         "CREATE TABLE empty_table ();",
         "CREATE TABLE missing_type (id);",
-        "CREATE TABLE broken_columns (id INT, );",
-        "CREATE TABLE bad_char_float (code CHAR(3.5));",
-        "CREATE TABLE bad_char_empty (code CHAR());",
-        "CREATE TABLE bad_char_text (code CHAR(text));",
-        "CREATE TABLE bad_double_only (amount DOUBLE);",
-        "CREATE TABLE bad_precision_only (amount PRECISION);",
-        "CREATE TABLE bad_extendible_only (id INT INDEX EXTENDIBLE);",
-        "CREATE TABLE bad_sequential_only (id INT INDEX SEQUENTIAL);",
-        "CREATE TABLE bad_bplus_only (id INT INDEX BPLUS);",
-        "CREATE TABLE bad_file_path (id INT) FROM FILE data.csv;",
+        "CREATE TABLE broken_columns (id INT PRIMARY KEY, );",
+        "CREATE TABLE bad_char_float (id INT PRIMARY KEY, code CHAR(3.5));",
+        "CREATE TABLE bad_char_empty (id INT PRIMARY KEY, code CHAR());",
+        "CREATE TABLE bad_char_text (id INT PRIMARY KEY, code CHAR(text));",
+        "CREATE TABLE bad_double_only (id INT PRIMARY KEY, amount DOUBLE);",
+        "CREATE TABLE bad_precision_only (id INT PRIMARY KEY, amount PRECISION);",
+        "CREATE TABLE missing_key_keyword (id INT PRIMARY);",
+        "CREATE TABLE bad_primary_rtree (id INT PRIMARY KEY USING RTREE, name CHAR(10));",
+        "CREATE TABLE bad_primary_using_missing (id INT PRIMARY KEY USING, name CHAR(10));",
+        "CREATE TABLE bad_file_path (id INT PRIMARY KEY) FROM FILE data.csv;",
+        "CREATE INDEX ON users (id) USING BPLUS TREE;",
+        "CREATE INDEX idx_users_empty ON users () USING BPLUS TREE;",
+        "CREATE INDEX idx_users_trailing ON users (id,) USING BPLUS TREE;",
+        "CREATE INDEX idx_users_bad_syntax ON users (id) BPLUS TREE;",
+        "DROP users;",
+        "DROP INDEX idx_users_id users;",
+        "DROP INDEX ON users;",
         "SELECT * FROM users WHERE id = 100",
         "INSERT INTO users VALUES (1, 12.5, 7.8)",
         "DELETE FROM users WHERE id = 100",
     ]
 
     semantic_valid_examples = [
-        "CREATE TABLE semantic_ok (id INT, code CHAR(8));",
-        "CREATE TABLE semantic_file (id INT) FROM FILE 'data.csv';",
+        "CREATE TABLE semantic_ok (id INT PRIMARY KEY, code CHAR(8));",
+        "CREATE TABLE semantic_hash (id INT PRIMARY KEY USING EXTENDIBLE HASHING, code CHAR(8));",
+        "CREATE TABLE semantic_seq (id INT PRIMARY KEY USING SEQUENTIAL FILE, code CHAR(8));",
+        "CREATE TABLE semantic_bplus (id INT PRIMARY KEY USING BPLUS TREE, code CHAR(8));",
+        "CREATE TABLE semantic_file (id INT PRIMARY KEY) FROM FILE 'data.csv';",
+        "CREATE INDEX idx_users_id ON users (id) USING BPLUS TREE;",
+        "CREATE INDEX idx_users_created_at ON users (created_at) USING SEQUENTIAL FILE;",
+        "CREATE INDEX idx_places_coords ON places (lat, lon) USING RTREE;",
+        "DROP TABLE users;",
+        "DROP INDEX idx_users_id ON users;",
         "SELECT * FROM users WHERE id BETWEEN 10 AND 20;",
         "SELECT * FROM users WHERE created_at = DATE '2026-04-19';",
         "SELECT * FROM users WHERE created_at = DATE '2024-02-29';",
@@ -81,9 +109,14 @@ if __name__ == "__main__":
     ]
 
     semantic_rejected_examples = [
-        "CREATE TABLE duplicated_columns (id INT, id REAL);",
-        "CREATE TABLE bad_char_zero (code CHAR(0));",
-        "CREATE TABLE empty_file_path (id INT) FROM FILE '';",
+        "CREATE TABLE duplicated_columns (id INT PRIMARY KEY, id REAL);",
+        "CREATE TABLE bad_char_zero (id INT PRIMARY KEY, code CHAR(0));",
+        "CREATE TABLE missing_primary_key (id INT, code CHAR(8));",
+        "CREATE TABLE two_primary_keys (id INT PRIMARY KEY, code INT PRIMARY KEY);",
+        "CREATE TABLE empty_file_path (id INT PRIMARY KEY) FROM FILE '';",
+        "CREATE INDEX idx_users_two_cols ON users (id, name) USING BPLUS TREE;",
+        "CREATE INDEX idx_users_rtree_one ON users (lat) USING RTREE;",
+        "CREATE INDEX idx_users_rtree_dup ON users (lat, lat) USING RTREE;",
         "SELECT * FROM users WHERE id BETWEEN 20 AND 10;",
         "SELECT * FROM users WHERE id BETWEEN 10 AND '20';",
         "SELECT * FROM users WHERE created_at = DATE '2026-13-19';",
@@ -146,7 +179,7 @@ if __name__ == "__main__":
             parser_valid_passed += 1
             print(f"[OK] {sql}")
             print("AST:", type(node).__name__)
-        except (LexError, ParseError) as error:
+        except (LexError, ParseError, SemanticError) as error:
             print(f"[ERROR] {sql}")
             print(f"{type(error).__name__}: {error}")
         print("")
@@ -159,7 +192,7 @@ if __name__ == "__main__":
             node = Parser(sql).parse()
             print(f"[NO RECHAZADO] {sql}")
             print("AST:", type(node).__name__)
-        except (LexError, ParseError) as error:
+        except (LexError, ParseError, SemanticError) as error:
             parser_rejected_passed += 1
             print(f"[OK] {sql}")
             print(f"{type(error).__name__}: {error}")

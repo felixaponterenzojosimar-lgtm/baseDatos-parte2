@@ -5,6 +5,7 @@ from ..indexes.base_index import DuplicateKeyError
 from ..parser.ast_nodes import (
     CreateTableNode, CreateIndexNode, InsertNode, SelectAllNode, SelectEqualNode,
     SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
+    DropTableNode, DropIndexNode,
 )
 
 
@@ -37,6 +38,8 @@ class Executor:
         dispatch = {
             CreateTableNode:       self._exec_create,
             CreateIndexNode:       self._exec_create_index,
+            DropTableNode:         self._exec_drop_table,
+            DropIndexNode:         self._exec_drop_index,
             InsertNode:            self._exec_insert,
             SelectAllNode:         self._exec_select_all,
             SelectEqualNode:       self._exec_select_equal,
@@ -66,17 +69,26 @@ class Executor:
         Construye el Schema desde las columnas del parser y crea la tabla.
         Si from_file esta presente, carga el CSV.
         """
-        schema, index_type = Database.schema_from_columns(node.columns)
+        schema, column_definitions, primary_index_type = Database.schema_from_columns(node.columns)
         self.db.create_table(
             name=node.table_name,
             schema=schema,
-            index_type=index_type,
+            column_definitions=column_definitions,
+            primary_index_type=primary_index_type,
             from_file=node.from_file,
         )
         return []
 
     def _exec_create_index(self, node: CreateIndexNode) -> list:
-        self.db.add_secondary_index(node.table_name, node.column, node.index_type)
+        self.db.add_secondary_index(node.table_name, node.index_name, node.columns, node.index_type)
+        return []
+
+    def _exec_drop_table(self, node: DropTableNode) -> list:
+        self.db.drop_table(node.table_name)
+        return []
+
+    def _exec_drop_index(self, node: DropIndexNode) -> list:
+        self.db.drop_secondary_index(node.table_name, node.index_name)
         return []
 
     def _exec_insert(self, node: InsertNode) -> list:
@@ -97,9 +109,21 @@ class Executor:
             record[field.name] = self._cast_value(value, field)
 
         table.index.add(record)
-        for sec_idx in table.secondary_indexes.values():
+        primary_key_value = record[table.schema.primary_key]
+        for secondary_entry in table.secondary_indexes.values():
             try:
-                sec_idx.add(record)
+                if secondary_entry["type"] == "rtree":
+                    if hasattr(secondary_entry["index"], "add_ref"):
+                        lat_column, lon_column = secondary_entry["columns"]
+                        secondary_entry["index"].add_ref(
+                            record[lat_column],
+                            record[lon_column],
+                            primary_key_value,
+                        )
+                else:
+                    if hasattr(secondary_entry["index"], "add_ref"):
+                        column_name = secondary_entry["columns"][0]
+                        secondary_entry["index"].add_ref(record[column_name], primary_key_value)
             except DuplicateKeyError:
                 pass
         return []
@@ -122,11 +146,15 @@ class Executor:
     def _exec_select_equal(self, node: SelectEqualNode) -> list:
         """Busqueda exacta por clave."""
         table = self.db.get_table(node.table_name)
-        if node.column in table.secondary_indexes:
-            field = table.schema.get_field(node.column)
-            key = self._cast_value(node.value, field)
-            result = table.secondary_indexes[node.column].search(key)
-            return [result] if result is not None else []
+        for secondary_entry in table.secondary_indexes.values():
+            if secondary_entry["type"] != "rtree" and secondary_entry["columns"] == [node.column]:
+                field = table.schema.get_field(node.column)
+                key = self._cast_value(node.value, field)
+                ref_record = secondary_entry["index"].search(key)
+                if ref_record is None:
+                    return []
+                record = self.db.resolve_primary_key(table, ref_record[table.schema.primary_key])
+                return [record] if record is not None else []
         key = self._cast_key(node.value, table, node.column)
         result = table.index.search(key)
         return [result] if result is not None else []
@@ -138,6 +166,12 @@ class Executor:
         table = self.db.get_table(node.table_name)
         field = table.schema.get_field(node.column)
         key = self._cast_value(node.value, field)
+        target_index = table.index
+
+        for secondary_entry in table.secondary_indexes.values():
+            if secondary_entry["type"] != "rtree" and secondary_entry["columns"] == [node.column]:
+                target_index = secondary_entry["index"]
+                break
 
         if field.field_type == FieldType.INT:
             begin = -2147483648
@@ -153,13 +187,31 @@ class Executor:
             end = chr(127) * field.size
 
         if node.operator in ("<", "<="):
-            results = table.index.range_search(begin, key)
+            results = target_index.range_search(begin, key)
+            if target_index is not table.index:
+                resolved = [
+                    self.db.resolve_primary_key(table, ref[table.schema.primary_key])
+                    for ref in results if ref is not None
+                ]
+                if node.operator == "<":
+                    return [record for record in resolved if record[node.column] < key]
+                return [record for record in resolved if record[node.column] <= key]
+
             if node.operator == "<":
                 return [record for record in results if record[node.column] < key]
             return [record for record in results if record[node.column] <= key]
 
         if node.operator in (">", ">="):
-            results = table.index.range_search(key, end)
+            results = target_index.range_search(key, end)
+            if target_index is not table.index:
+                resolved = [
+                    self.db.resolve_primary_key(table, ref[table.schema.primary_key])
+                    for ref in results if ref is not None
+                ]
+                if node.operator == ">":
+                    return [record for record in resolved if record[node.column] > key]
+                return [record for record in resolved if record[node.column] >= key]
+
             if node.operator == ">":
                 return [record for record in results if record[node.column] > key]
             return [record for record in results if record[node.column] >= key]
@@ -169,11 +221,16 @@ class Executor:
     def _exec_select_range(self, node: SelectRangeNode) -> list:
         """Busqueda por rango [begin, end]."""
         table = self.db.get_table(node.table_name)
-        if node.column in table.secondary_indexes:
-            field = table.schema.get_field(node.column)
-            begin = self._cast_value(node.begin, field)
-            end = self._cast_value(node.end, field)
-            return table.secondary_indexes[node.column].range_search(begin, end)
+        for secondary_entry in table.secondary_indexes.values():
+            if secondary_entry["type"] != "rtree" and secondary_entry["columns"] == [node.column]:
+                field = table.schema.get_field(node.column)
+                begin = self._cast_value(node.begin, field)
+                end = self._cast_value(node.end, field)
+                refs = secondary_entry["index"].range_search(begin, end)
+                return [
+                    self.db.resolve_primary_key(table, ref[table.schema.primary_key])
+                    for ref in refs if ref is not None
+                ]
         begin = self._cast_key(node.begin, table, node.column)
         end = self._cast_key(node.end, table, node.column)
         return table.index.range_search(begin, end)
@@ -181,34 +238,61 @@ class Executor:
     def _exec_select_point_radius(self, node: SelectPointRadiusNode) -> list:
         """Busqueda espacial por radio. Solo valida para RTree."""
         table = self.db.get_table(node.table_name)
-        if not isinstance(table.index, RTree):
-            raise ExecutionError(
-                f"La tabla '{node.table_name}' no usa un indice RTree"
-            )
-        return table.index.range_search(node.point, node.radius)
+        for secondary_entry in table.secondary_indexes.values():
+            if secondary_entry["type"] == "rtree":
+                refs = secondary_entry["index"].range_search(node.point, node.radius)
+                return [
+                    self.db.resolve_primary_key(table, ref)
+                    for ref in refs
+                ]
+        raise ExecutionError(f"La tabla '{node.table_name}' no tiene un indice RTree")
 
     def _exec_select_knn(self, node: SelectKNNNode) -> list:
         """Busqueda de k vecinos mas cercanos. Solo valida para RTree."""
         table = self.db.get_table(node.table_name)
-        if not isinstance(table.index, RTree):
-            raise ExecutionError(
-                f"La tabla '{node.table_name}' no usa un indice RTree"
-            )
-        return table.index.knn(node.point, node.k)
+        for secondary_entry in table.secondary_indexes.values():
+            if secondary_entry["type"] == "rtree":
+                refs = secondary_entry["index"].knn(node.point, node.k)
+                return [
+                    self.db.resolve_primary_key(table, ref)
+                    for ref in refs
+                ]
+        raise ExecutionError(f"La tabla '{node.table_name}' no tiene un indice RTree")
 
     def _exec_delete(self, node: DeleteNode) -> list:
         """Elimina el registro con la clave dada."""
         table = self.db.get_table(node.table_name)
-        key = self._cast_key(node.value, table, node.column)
+        record = None
+        primary_key_value = None
 
-        if table.secondary_indexes and node.column == table.schema.primary_key:
+        if node.column == table.schema.primary_key:
+            key = self._cast_key(node.value, table, node.column)
             record = table.index.search(key)
-            if record:
-                for col, sec_idx in table.secondary_indexes.items():
-                    sec_key = self._cast_key(record[col], table, col)
-                    sec_idx.remove(sec_key)
+            primary_key_value = key
+        else:
+            for secondary_entry in table.secondary_indexes.values():
+                if secondary_entry["type"] != "rtree" and secondary_entry["columns"] == [node.column]:
+                    field = table.schema.get_field(node.column)
+                    sec_key = self._cast_value(node.value, field)
+                    ref_record = secondary_entry["index"].search(sec_key)
+                    if ref_record is not None:
+                        record = self.db.resolve_primary_key(
+                            table,
+                            ref_record[table.schema.primary_key],
+                        )
+                        if record is not None:
+                            primary_key_value = record[table.schema.primary_key]
+                    break
 
-        removed = table.index.remove(key)
+        if record is None or primary_key_value is None:
+            return [{"deleted": False}]
+
+        for secondary_entry in table.secondary_indexes.values():
+            if hasattr(secondary_entry["index"], "remove_ref"):
+                secondary_entry["index"].remove_ref(primary_key_value)
+
+
+        removed = table.index.remove(primary_key_value)
         return [{"deleted": removed}]
 
     # ------------------------------------------------------------------

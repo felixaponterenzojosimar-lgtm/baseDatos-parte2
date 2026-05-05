@@ -12,6 +12,8 @@ class SequentialFile(Index):
     K = 10  # umbral de registros en auxiliar antes de reconstruir
     FLAG_ACTIVE = 0x00    # Registro activo
     FLAG_DELETED = 0xFF   # Registro eliminado
+    SOURCE_MAIN = 0
+    SOURCE_AUX = 1
     
     def __init__(self, schema: Schema, page_manager: PageManager,
                  aux_page_manager: PageManager, stats: DiskStats):
@@ -79,6 +81,70 @@ class SequentialFile(Index):
                     return records[idx][1]
         
         return None
+
+    def find_record_ref(self, key):
+        target_page = self._binary_search(key)
+        total_main_pages = self.pm.total_pages()
+
+        pages_to_check = set()
+        if target_page < total_main_pages:
+            pages_to_check.add(target_page)
+        if target_page > 0:
+            pages_to_check.add(target_page - 1)
+        if target_page + 1 < total_main_pages:
+            pages_to_check.add(target_page + 1)
+
+        for page_id in pages_to_check:
+            records = self._read_page_records(self.pm, page_id)
+            for slot, (flag, record) in enumerate(records):
+                if flag == self.FLAG_ACTIVE and record[self.schema.primary_key] == key:
+                    return {"page_id": page_id, "slot": slot, "source_id": self.SOURCE_MAIN}
+
+        for page_id in range(self.aux_pm.total_pages()):
+            records = self._read_page_records(self.aux_pm, page_id)
+            for slot, (flag, record) in enumerate(records):
+                if flag == self.FLAG_ACTIVE and record[self.schema.primary_key] == key:
+                    return {"page_id": page_id, "slot": slot, "source_id": self.SOURCE_AUX}
+
+        return None
+
+    def add_ref(self, key, primary_key_value) -> None:
+        record = {
+            self.schema.primary_key: key,
+            self.schema.fields[1].name: primary_key_value,
+        }
+        self.add(record)
+
+    def remove_ref(self, primary_key_value) -> bool:
+        pk_field_name = self.schema.fields[1].name
+        for item in self.iter_record_refs():
+            if item["record"][pk_field_name] == primary_key_value:
+                key = item["record"][self.schema.primary_key]
+                return self.remove(key)
+        return False
+
+    def read_record_ref(self, page_id: int, slot: int, source_id: int = 0) -> dict:
+        page_manager = self.pm if source_id == self.SOURCE_MAIN else self.aux_pm
+        records = self._read_page_records(page_manager, page_id)
+        if slot < 0 or slot >= len(records):
+            raise ValueError("Slot fuera de rango en SequentialFile")
+        flag, record = records[slot]
+        if flag != self.FLAG_ACTIVE:
+            raise ValueError("La referencia apunta a un registro inactivo en SequentialFile")
+        return record
+
+    def iter_record_refs(self):
+        for page_id in range(self.pm.total_pages()):
+            records = self._read_page_records(self.pm, page_id)
+            for slot, (flag, record) in enumerate(records):
+                if flag == self.FLAG_ACTIVE:
+                    yield {"record": record, "page_id": page_id, "slot": slot, "source_id": self.SOURCE_MAIN}
+
+        for page_id in range(self.aux_pm.total_pages()):
+            records = self._read_page_records(self.aux_pm, page_id)
+            for slot, (flag, record) in enumerate(records):
+                if flag == self.FLAG_ACTIVE:
+                    yield {"record": record, "page_id": page_id, "slot": slot, "source_id": self.SOURCE_AUX}
 
     def range_search(self, begin, end) -> list[dict]:
         results = []

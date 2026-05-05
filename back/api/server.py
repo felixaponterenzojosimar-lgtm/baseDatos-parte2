@@ -16,6 +16,7 @@ from ..engine.database import DATA_DIR
 from ..parser.ast_nodes import (
     CreateTableNode, CreateIndexNode, InsertNode, SelectAllNode, SelectEqualNode,
     SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
+    DropTableNode, DropIndexNode,
 )
 
 app = FastAPI(title="Mini-SGBD API")
@@ -38,6 +39,8 @@ _metrics_history: deque = deque(maxlen=1000)
 _NODE_OP = {
     CreateTableNode:       "CREATE TABLE",
     CreateIndexNode:       "CREATE INDEX",
+    DropTableNode:         "DROP TABLE",
+    DropIndexNode:         "DROP INDEX",
     InsertNode:            "INSERT",
     SelectAllNode:         "SELECT ALL",
     SelectEqualNode:       "SELECT",
@@ -96,7 +99,7 @@ def run_query(req: QueryRequest):
     # Mensaje para operaciones que no retornan filas
     message = None
     node_type = type(node)
-    if node_type in (CreateTableNode, CreateIndexNode, InsertNode):
+    if node_type in (CreateTableNode, CreateIndexNode, DropTableNode, DropIndexNode, InsertNode):
         message = f"{_NODE_OP[node_type]} ejecutado correctamente"
     elif node_type == DeleteNode:
         deleted = rows[0]["deleted"] if rows else False
@@ -131,20 +134,20 @@ def list_tables():
     tables = []
     for name in db.list_tables():
         table = db.get_table(name)
-        columns = [
-            {"name": f.name, "type": f.field_type.value}
-            for f in table.schema.fields
-        ]
-        secondary = {
-            col: _index_type_name(idx)
-            for col, idx in table.secondary_indexes.items()
-        }
         tables.append({
-            "name":              name,
-            "columns":           columns,
-            "index_type":        _index_type_name(table.index),
-            "data_file":         table.index.pm.filepath,
-            "secondary_indexes": secondary,
+            "name": name,
+            "columns": table.column_definitions,
+            "primary_key": table.schema.primary_key,
+            "primary_index_type": table.primary_index_type,
+            "data_file": table.index.pm.filepath,
+            "secondary_indexes": [
+                {
+                    "name": index_name,
+                    "type": meta["type"],
+                    "columns": meta["columns"],
+                }
+                for index_name, meta in table.secondary_indexes.items()
+            ],
         })
     return {"tables": tables, "count": len(tables)}
 
@@ -164,10 +167,18 @@ def get_rtree_points(table: str):
         t = db.get_table(table)
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    if not isinstance(t.index, RTree):
+    rtree_index = None
+    for secondary_entry in t.secondary_indexes.values():
+        if secondary_entry["type"] == "rtree":
+            rtree_index = secondary_entry["index"]
+            break
+    if rtree_index is None:
         raise HTTPException(status_code=400, detail=f"'{table}' no usa índice RTree")
-    raw = t.index.all_points()
-    points = [{"x": p["lon"], "y": p["lat"], "record": p["record"]} for p in raw]
+    raw = rtree_index.all_points()
+    points = []
+    for point in raw:
+        record = db.resolve_primary_key(t, point["pk"])
+        points.append({"x": point["lon"], "y": point["lat"], "record": record})
     return {"table": table, "points": points, "count": len(points)}
 
 
@@ -230,7 +241,14 @@ async def upload_csv_table(
         f.write(content)
 
     try:
-        table = db.create_table(table_name, schema, index_type)
+        column_definitions = []
+        for field in fields_data:
+            field_type = field["type"]
+            if field_type == "CHAR":
+                column_definitions.append({"name": field["name"], "type": "CHAR", "size": int(field["size"])})
+            else:
+                column_definitions.append({"name": field["name"], "type": field_type})
+        table = db.create_table(table_name, schema, column_definitions, index_type)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -241,8 +259,12 @@ async def upload_csv_table(
 
     for si in sec_indexes_data:
         try:
-            db.add_secondary_index(table_name, si["column"], si["index_type"])
+            index_name = si.get("name", f"idx_{table_name}_{'_'.join(si.get('columns', [si.get('column')]))}")
+            columns = si.get("columns")
+            if columns is None:
+                columns = [si["column"]]
+            db.add_secondary_index(table_name, index_name, columns, si["index_type"])
         except Exception as e:
-            raise HTTPException(status_code=422, detail=f"Error creando índice secundario en '{si['column']}': {e}")
+            raise HTTPException(status_code=422, detail=f"Error creando índice secundario '{index_name}': {e}")
 
     return {"message": f"Tabla '{table_name}' creada con {count} registros", "table": table_name, "rows_loaded": count}
