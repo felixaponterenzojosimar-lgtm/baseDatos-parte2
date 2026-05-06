@@ -1,4 +1,4 @@
-from .lexical_analizer import Token, TokenType
+from .lexical_analyzer import Token, TokenType
 from .ast_nodes import (
     CreateTableNode, CreateIndexNode, DateLiteralNode, TimeLiteralNode, InsertNode,
     SelectAllNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,

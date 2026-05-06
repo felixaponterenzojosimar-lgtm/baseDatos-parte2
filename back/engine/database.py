@@ -1,13 +1,19 @@
-import os
 import csv
 import json
-import shutil
+import os
+
 from .table import Table
-from ..storage import Schema, Field, FieldType, PageManager, DiskStats
-from ..indexes import SequentialFile, ExtendibleHashing, BPlusTree, RTree
+from ..indexes import BPlusTree, ExtendibleHashing, RTree, SequentialFile
+from ..storage import DiskStats, Field, FieldType, PageManager, Schema
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
-CATALOG_SUFFIX = "_catalog.json"
+CATALOG_DIR = os.path.join(DATA_DIR, "catalog")
+CATALOG_META_PATH = os.path.join(CATALOG_DIR, "catalog_meta.json")
+PG_CLASS_PATH = os.path.join(CATALOG_DIR, "pg_class.json")
+PG_ATTRIBUTE_PATH = os.path.join(CATALOG_DIR, "pg_attribute.json")
+PG_INDEX_PATH = os.path.join(CATALOG_DIR, "pg_index.json")
+PG_CONSTRAINT_PATH = os.path.join(CATALOG_DIR, "pg_constraint.json")
+DEFAULT_NEXT_OID = 1000
 
 
 class Database:
@@ -22,7 +28,8 @@ class Database:
     def __init__(self):
         self._tables: dict[str, Table] = {}
         self.stats = DiskStats()
-        os.makedirs(DATA_DIR, exist_ok=True)
+        self._catalog_meta = {"next_oid": DEFAULT_NEXT_OID}
+        self._ensure_data_dir()
         self._load_catalogs()
 
     # ------------------------------------------------------------------
@@ -47,13 +54,23 @@ class Database:
         self._ensure_data_dir()
         pk_storage_name = self._primary_storage_name(schema.primary_key)
         index = self._build_index(name, pk_storage_name, schema, primary_index_type, [schema.primary_key])
-        table = Table(name, schema, index, column_definitions, primary_index_type)
+        table = Table(
+            name,
+            schema,
+            index,
+            column_definitions,
+            primary_index_type,
+            rel_oid=self._allocate_oid(),
+            primary_index_oid=self._allocate_oid(),
+            primary_index_name=self._primary_index_rel_name(name, schema.primary_key),
+            primary_constraint_name=self._primary_constraint_name(name),
+        )
         self._tables[name] = table
 
         if from_file:
             self._load_csv(table, from_file)
 
-        self._save_table_catalog(table)
+        self._save_catalogs()
         return table
 
     def get_table(self, name: str) -> Table:
@@ -85,25 +102,29 @@ class Database:
             sec_schema = Schema([key_field, pk_field], primary_key=columns[0])
 
         sec_index = self._build_index(table_name, index_name, sec_schema, index_type, columns, secondary=True)
-        entry = {"index": sec_index, "type": index_type, "columns": columns}
+        entry = {
+            "index": sec_index,
+            "type": index_type,
+            "columns": columns,
+            "rel_oid": self._allocate_oid(),
+            "storage_name": index_name,
+        }
         table.secondary_indexes[index_name] = entry
 
         if index_type == "rtree":
             self._populate_rtree_secondary_index(table, entry)
         else:
             self._populate_secondary_index(table, entry)
-        self._save_table_catalog(table)
+        self._save_catalogs()
 
     def drop_secondary_index(self, table_name: str, index_name: str) -> None:
         table = self.get_table(table_name)
-        if index_name == self._primary_storage_name(table.schema.primary_key):
-            raise ValueError("DROP INDEX no puede eliminar el indice de la llave primaria")
         if index_name not in table.secondary_indexes:
             raise KeyError(f"Indice '{index_name}' no existe en '{table_name}'")
 
         del table.secondary_indexes[index_name]
         self._delete_index_files(table_name, index_name)
-        self._save_table_catalog(table)
+        self._save_catalogs()
 
     def drop_table(self, name: str) -> None:
         if name not in self._tables:
@@ -111,6 +132,7 @@ class Database:
 
         self._delete_table_files(name)
         del self._tables[name]
+        self._save_catalogs()
 
     def list_tables(self) -> list:
         return list(self._tables.keys())
@@ -119,17 +141,21 @@ class Database:
     # Metodos internos
     # ------------------------------------------------------------------
 
-    def _table_catalog_path(self, table_name: str) -> str:
-        return os.path.join(DATA_DIR, f"{table_name}{CATALOG_SUFFIX}")
-
     def _index_base_path(self, table_name: str, index_name: str) -> str:
         return os.path.join(DATA_DIR, f"{table_name}_{index_name}")
 
     def _primary_storage_name(self, primary_key_column: str) -> str:
         return f"pk_{primary_key_column}"
 
+    def _primary_index_rel_name(self, table_name: str, primary_key_column: str) -> str:
+        return f"pk_{table_name}_{primary_key_column}"
+
+    def _primary_constraint_name(self, table_name: str) -> str:
+        return f"{table_name}_pkey"
+
     def _ensure_data_dir(self) -> None:
         os.makedirs(DATA_DIR, exist_ok=True)
+        os.makedirs(CATALOG_DIR, exist_ok=True)
 
     def _delete_table_files(self, table_name: str) -> None:
         prefix = f"{table_name}_"
@@ -140,7 +166,7 @@ class Database:
                     if os.path.isfile(filepath):
                         os.remove(filepath)
                 except OSError:
-                    pass  # Ignorar errores de eliminación individuales
+                    pass
 
     def _delete_index_files(self, table_name: str, storage_name: str) -> None:
         base_name = f"{table_name}_{storage_name}"
@@ -204,11 +230,13 @@ class Database:
         refs = []
         for item in table.index.iter_record_refs():
             record = item["record"]
-            refs.append({
-                "lat": float(record[lat_column]),
-                "lon": float(record[lon_column]),
-                "pk": record[table.schema.primary_key],
-            })
+            refs.append(
+                {
+                    "lat": float(record[lat_column]),
+                    "lon": float(record[lon_column]),
+                    "pk": record[table.schema.primary_key],
+                }
+            )
         secondary_entry["index"].build_from_refs(refs)
 
     def resolve_primary_key(self, table: Table, primary_key_value) -> dict:
@@ -244,47 +272,64 @@ class Database:
                 record[field.name] = raw
         return record
 
-    def _save_table_catalog(self, table: Table) -> None:
-        entry = {
-            "primary_key": {
-                "column": table.schema.primary_key,
-                "index_type": self._catalog_index_type(table.primary_index_type),
-                "storage_name": self._primary_storage_name(table.schema.primary_key),
-            },
-            "columns": [self._copy_column_definition(column) for column in table.column_definitions],
-            "indexes": [
-                {
-                    "name": index_name,
-                    "type": self._catalog_index_type(meta["type"]),
-                    "columns": list(meta["columns"]),
-                    "storage_name": index_name,
-                }
-                for index_name, meta in table.secondary_indexes.items()
-            ],
-        }
-
-        with open(self._table_catalog_path(table.name), "w", encoding="utf-8") as handle:
-            json.dump(entry, handle, indent=2)
-
     def _load_catalogs(self) -> None:
-        for filename in os.listdir(DATA_DIR):
-            if not filename.endswith(CATALOG_SUFFIX):
-                continue
-            table_name = filename.removesuffix(CATALOG_SUFFIX)
-            catalog_path = os.path.join(DATA_DIR, filename)
+        self._catalog_meta = self._read_json_file(CATALOG_META_PATH, {"next_oid": DEFAULT_NEXT_OID})
+        if "next_oid" not in self._catalog_meta:
+            self._catalog_meta["next_oid"] = DEFAULT_NEXT_OID
+        self._load_system_catalogs()
 
+    def _load_system_catalogs(self) -> None:
+        pg_class = self._read_json_file(PG_CLASS_PATH, [])
+        pg_attribute = self._read_json_file(PG_ATTRIBUTE_PATH, [])
+        pg_index = self._read_json_file(PG_INDEX_PATH, [])
+        pg_constraint = self._read_json_file(PG_CONSTRAINT_PATH, [])
+
+        class_by_oid = {entry["oid"]: entry for entry in pg_class}
+        attrs_by_rel_id: dict[int, list] = {}
+        for attr in pg_attribute:
+            attrs_by_rel_id.setdefault(attr["att_rel_id"], []).append(attr)
+        for attrs in attrs_by_rel_id.values():
+            attrs.sort(key=lambda item: item["att_num"])
+
+        indexes_by_rel_id: dict[int, list] = {}
+        for index_entry in pg_index:
+            indexes_by_rel_id.setdefault(index_entry["ind_rel_id"], []).append(index_entry)
+
+        constraints_by_rel_id: dict[int, list] = {}
+        for constraint in pg_constraint:
+            constraints_by_rel_id.setdefault(constraint["con_rel_id"], []).append(constraint)
+
+        table_entries = [entry for entry in pg_class if entry["rel_kind"] == "table"]
+        table_entries.sort(key=lambda entry: entry["oid"])
+
+        for table_entry in table_entries:
             try:
-                with open(catalog_path, encoding="utf-8") as handle:
-                    entry = json.load(handle)
+                rel_oid = table_entry["oid"]
+                table_name = table_entry["rel_name"]
+                attr_rows = attrs_by_rel_id[rel_oid]
+                attnum_to_name = {attr["att_num"]: attr["att_name"] for attr in attr_rows}
+                column_definitions = [self._column_definition_from_attribute(attr) for attr in attr_rows]
 
-                primary_key_entry = entry["primary_key"]
-                primary_key_column = primary_key_entry["column"]
-                primary_index_type = self._parse_catalog_index_type(primary_key_entry["index_type"])
-                primary_storage_name = primary_key_entry.get(
-                    "storage_name",
-                    self._primary_storage_name(primary_key_column),
+                constraints = constraints_by_rel_id.get(rel_oid, [])
+                primary_constraint = next(
+                    constraint
+                    for constraint in constraints
+                    if constraint["con_type"] == "primary_key"
                 )
-                column_definitions = [self._copy_column_definition(column) for column in entry["columns"]]
+                primary_key_attnum = primary_constraint["con_key"][0]
+                primary_key_column = attnum_to_name[primary_key_attnum]
+
+                index_entries = indexes_by_rel_id.get(rel_oid, [])
+                primary_index_entry = next(
+                    index_entry for index_entry in index_entries if index_entry["ind_is_primary"]
+                )
+                primary_index_class = class_by_oid[primary_index_entry["index_rel_id"]]
+                primary_index_type = primary_index_entry["ind_class"]
+                primary_storage_name = self._storage_name_from_file_node(
+                    table_name,
+                    primary_index_class["rel_file_node"],
+                )
+
                 schema = self.schema_from_catalog_columns(column_definitions, primary_key_column)
                 primary_index = self._build_index(
                     table_name,
@@ -293,56 +338,234 @@ class Database:
                     primary_index_type,
                     [primary_key_column],
                 )
-                table = Table(table_name, schema, primary_index, column_definitions, primary_index_type)
+                table = Table(
+                    table_name,
+                    schema,
+                    primary_index,
+                    column_definitions,
+                    primary_index_type,
+                    rel_oid=rel_oid,
+                    primary_index_oid=primary_index_entry["index_rel_id"],
+                    primary_index_name=primary_index_class["rel_name"],
+                    primary_constraint_name=primary_constraint["con_name"],
+                )
 
-                for index_entry in entry.get("indexes", []):
-                    index_name = index_entry["name"]
-                    index_type = self._parse_catalog_index_type(index_entry["type"])
-                    columns = list(index_entry["columns"])
-                    storage_name = index_entry.get("storage_name", index_name)
-                    if index_type == "rtree":
+                for index_entry in index_entries:
+                    if index_entry["ind_is_primary"]:
+                        continue
+                    index_class = class_by_oid[index_entry["index_rel_id"]]
+                    columns = [attnum_to_name[att_num] for att_num in index_entry["ind_key"]]
+                    storage_name = self._storage_name_from_file_node(
+                        table_name,
+                        index_class["rel_file_node"],
+                    )
+                    if index_entry["ind_class"] == "rtree":
                         sec_schema = Schema(schema.fields, schema.primary_key)
                     else:
-                        sec_schema = Schema([schema.get_field(columns[0]), schema.get_field(schema.primary_key)], columns[0])
-                    sec_index = self._build_index(table_name, storage_name, sec_schema, index_type, columns)
-                    table.secondary_indexes[index_name] = {
+                        sec_schema = Schema(
+                            [schema.get_field(columns[0]), schema.get_field(schema.primary_key)],
+                            primary_key=columns[0],
+                        )
+                    sec_index = self._build_index(
+                        table_name,
+                        storage_name,
+                        sec_schema,
+                        index_entry["ind_class"],
+                        columns,
+                    )
+                    table.secondary_indexes[index_class["rel_name"]] = {
                         "index": sec_index,
-                        "type": index_type,
+                        "type": index_entry["ind_class"],
                         "columns": columns,
+                        "rel_oid": index_class["oid"],
+                        "storage_name": storage_name,
                     }
 
                 self._tables[table_name] = table
             except Exception:
                 continue
 
-    def _catalog_index_type(self, index_type: str) -> str:
-        if index_type == "sequential":
-            return "SEQUENTIAL"
-        if index_type == "hashing":
-            return "EXTENDIBLE HASHING"
-        if index_type == "bplus":
-            return "BPLUS TREE"
-        if index_type == "rtree":
-            return "RTREE"
-        raise ValueError(f"index_type '{index_type}' no valido para catalogo")
+    def _save_catalogs(self) -> None:
+        pg_class = []
+        pg_attribute = []
+        pg_index = []
+        pg_constraint = []
 
-    def _parse_catalog_index_type(self, index_type: str) -> str:
-        normalized = index_type.upper()
-        if normalized == "SEQUENTIAL":
-            return "sequential"
-        if normalized == "EXTENDIBLE HASHING":
-            return "hashing"
-        if normalized == "BPLUS TREE":
-            return "bplus"
-        if normalized == "RTREE":
-            return "rtree"
-        raise ValueError(f"Tipo de indice desconocido en catalogo: '{index_type}'")
+        for table in sorted(self._tables.values(), key=lambda item: item.name):
+            if table.rel_oid is None:
+                table.rel_oid = self._allocate_oid()
+            if table.primary_index_oid is None:
+                table.primary_index_oid = self._allocate_oid()
+            if table.primary_index_name is None:
+                table.primary_index_name = self._primary_index_rel_name(table.name, table.schema.primary_key)
+            if table.primary_constraint_name is None:
+                table.primary_constraint_name = self._primary_constraint_name(table.name)
+
+            column_number_by_name = {
+                column["name"]: position
+                for position, column in enumerate(table.column_definitions, start=1)
+            }
+            primary_storage_name = self._primary_storage_name(table.schema.primary_key)
+            primary_file_node = self._index_file_node(table.name, primary_storage_name)
+
+            pg_class.append(
+                {
+                    "oid": table.rel_oid,
+                    "rel_name": table.name,
+                    "rel_kind": "table",
+                    "rel_natts": len(table.column_definitions),
+                    "rel_am": table.primary_index_type,
+                    "rel_file_node": primary_file_node,
+                }
+            )
+
+            for att_num, column in enumerate(table.column_definitions, start=1):
+                pg_attribute.append(
+                    {
+                        "att_rel_id": table.rel_oid,
+                        "att_num": att_num,
+                        "att_name": column["name"],
+                        "att_type": column["type"],
+                        "att_len": self._column_length(column),
+                        "att_is_primary": column["name"] == table.schema.primary_key,
+                    }
+                )
+
+            pg_class.append(
+                {
+                    "oid": table.primary_index_oid,
+                    "rel_name": table.primary_index_name,
+                    "rel_kind": "index",
+                    "rel_natts": 1,
+                    "rel_am": table.primary_index_type,
+                    "rel_file_node": primary_file_node,
+                }
+            )
+            pg_index.append(
+                {
+                    "index_rel_id": table.primary_index_oid,
+                    "ind_rel_id": table.rel_oid,
+                    "ind_is_primary": True,
+                    "ind_is_unique": True,
+                    "ind_key": [column_number_by_name[table.schema.primary_key]],
+                    "ind_class": table.primary_index_type,
+                }
+            )
+            pg_constraint.append(
+                {
+                    "con_name": table.primary_constraint_name,
+                    "con_type": "primary_key",
+                    "con_rel_id": table.rel_oid,
+                    "con_ind_id": table.primary_index_oid,
+                    "con_key": [column_number_by_name[table.schema.primary_key]],
+                }
+            )
+
+            for index_name, meta in sorted(table.secondary_indexes.items()):
+                if meta.get("rel_oid") is None:
+                    meta["rel_oid"] = self._allocate_oid()
+                if meta.get("storage_name") is None:
+                    meta["storage_name"] = index_name
+
+                pg_class.append(
+                    {
+                        "oid": meta["rel_oid"],
+                        "rel_name": index_name,
+                        "rel_kind": "index",
+                        "rel_natts": len(meta["columns"]),
+                        "rel_am": meta["type"],
+                        "rel_file_node": self._index_file_node(table.name, meta["storage_name"]),
+                    }
+                )
+                pg_index.append(
+                    {
+                        "index_rel_id": meta["rel_oid"],
+                        "ind_rel_id": table.rel_oid,
+                        "ind_is_primary": False,
+                        "ind_is_unique": False,
+                        "ind_key": [column_number_by_name[column] for column in meta["columns"]],
+                        "ind_class": meta["type"],
+                    }
+                )
+
+        pg_class.sort(key=lambda entry: entry["oid"])
+        pg_attribute.sort(key=lambda entry: (entry["att_rel_id"], entry["att_num"]))
+        pg_index.sort(key=lambda entry: entry["index_rel_id"])
+        pg_constraint.sort(key=lambda entry: (entry["con_rel_id"], entry["con_name"]))
+
+        self._write_json_file(PG_CLASS_PATH, pg_class)
+        self._write_json_file(PG_ATTRIBUTE_PATH, pg_attribute)
+        self._write_json_file(PG_INDEX_PATH, pg_index)
+        self._write_json_file(PG_CONSTRAINT_PATH, pg_constraint)
+        self._write_json_file(CATALOG_META_PATH, self._catalog_meta)
+
+    def _index_file_node(self, table_name: str, storage_name: str) -> str:
+        return f"{table_name}_{storage_name}"
+
+    def _storage_name_from_file_node(self, table_name: str, rel_file_node: str) -> str:
+        prefix = f"{table_name}_"
+        if rel_file_node.startswith(prefix):
+            return rel_file_node[len(prefix):]
+        return rel_file_node
+
+    def _allocate_oid(self) -> int:
+        oid = self._catalog_meta["next_oid"]
+        self._catalog_meta["next_oid"] += 1
+        return oid
+
+    def _read_json_file(self, path: str, default):
+        if not os.path.exists(path):
+            return default
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def _write_json_file(self, path: str, payload) -> None:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2)
+
+    def _column_length(self, column: dict) -> int:
+        column_type = column["type"].upper()
+        if column_type in {"INT", "INTEGER", "SMALLINT", "BIGINT"}:
+            return 4
+        if column_type in {"REAL", "DOUBLE PRECISION"}:
+            return 8
+        if column_type == "BOOLEAN":
+            return 1
+        if column_type == "DATE":
+            return 10
+        if column_type == "TIME":
+            return 8
+        if column_type == "CHAR":
+            return column["size"]
+        raise ValueError(f"Tipo de columna desconocido para longitud: '{column['type']}'")
+
+    def _column_definition_from_attribute(self, attribute: dict) -> dict:
+        column = {"name": attribute["att_name"], "type": attribute["att_type"]}
+        if attribute["att_type"].upper() == "CHAR":
+            column["size"] = attribute["att_len"]
+        return column
 
     def _copy_column_definition(self, column: dict) -> dict:
         copied = {"name": column["name"], "type": column["type"]}
         if "size" in column:
             copied["size"] = column["size"]
         return copied
+
+    def _parse_catalog_index_type(self, index_type: str) -> str:
+        normalized = index_type.lower()
+        legacy_map = {
+            "sequential": "sequential",
+            "extensible hashing": "hashing",
+            "extendible hashing": "hashing",
+            "bplus tree": "bplus",
+            "rtree": "rtree",
+        }
+        if normalized in legacy_map:
+            return legacy_map[normalized]
+        if normalized not in self.INDEX_TYPES:
+            raise ValueError(f"Tipo de indice desconocido en catalogo: '{index_type}'")
+        return normalized
 
     # ------------------------------------------------------------------
     # Utilidad: construir Schema desde el parser o el catalogo

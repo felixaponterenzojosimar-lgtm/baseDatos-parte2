@@ -1,0 +1,82 @@
+[
+  {
+    "oid": 1000,
+    "rel_name": "employee",
+    "rel_kind": "table",
+    "rel_natts": 6,
+    "rel_am": "sequential",
+    "rel_file_node": "employee_pk_id"
+  },
+  {
+    "oid": 1001,
+    "rel_name": "pk_employee_id",
+    "rel_kind": "index",
+    "rel_natts": 1,
+    "rel_am": "sequential",
+    "rel_file_node": "employee_pk_id"
+  },
+  {
+    "oid": 1002,
+    "rel_name": "cities",
+    "rel_kind": "table",
+    "rel_natts": 11,
+    "rel_am": "bplus",
+    "rel_file_node": "cities_pk_id"
+  },
+  {
+    "oid": 1003,
+    "rel_name": "pk_cities_id",
+    "rel_kind": "index",
+    "rel_natts": 1,
+    "rel_am": "bplus",
+    "rel_file_node": "cities_pk_id"
+  },
+  {
+    "oid": 1004,
+    "rel_name": "idx_cities_coords",
+    "rel_kind": "index",
+    "rel_natts": 2,
+    "rel_am": "rtree",
+    "rel_file_node": "cities_idx_cities_coords"
+  },
+  {
+    "oid": 1005,
+    "rel_name": "idx_cities_name",
+    "rel_kind": "index",
+    "rel_natts": 1,
+    "rel_am": "bplus",
+    "rel_file_node": "cities_idx_cities_name"
+  },
+  {
+    "oid": 1006,
+    "rel_name": "pokemon",
+    "rel_kind": "table",
+    "rel_natts": 30,
+    "rel_am": "hashing",
+    "rel_file_node": "pokemon_pk_pokedex_number"
+  },
+  {
+    "oid": 1007,
+    "rel_name": "pk_pokemon_pokedex_number",
+    "rel_kind": "index",
+    "rel_natts": 1,
+    "rel_am": "hashing",
+    "rel_file_node": "pokemon_pk_pokedex_number"
+  },
+  {
+    "oid": 1012,
+    "rel_name": "anime_probe",
+    "rel_kind": "table",
+    "rel_natts": 26,
+    "rel_am": "sequential",
+    "rel_file_node": "anime_probe_pk_mal_id"
+  },
+  {
+    "oid": 1013,
+    "rel_name": "pk_anime_probe_mal_id",
+    "rel_kind": "index",
+    "rel_natts": 1,
+    "rel_am": "sequential",
+    "rel_file_node": "anime_probe_pk_mal_id"
+  }
+]

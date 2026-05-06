@@ -1,0 +1,586 @@
+[
+  {
+    "att_rel_id": 1000,
+    "att_num": 1,
+    "att_name": "id",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": true
+  },
+  {
+    "att_rel_id": 1000,
+    "att_num": 2,
+    "att_name": "birth_date",
+    "att_type": "DATE",
+    "att_len": 10,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1000,
+    "att_num": 3,
+    "att_name": "first_name",
+    "att_type": "CHAR",
+    "att_len": 14,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1000,
+    "att_num": 4,
+    "att_name": "last_name",
+    "att_type": "CHAR",
+    "att_len": 16,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1000,
+    "att_num": 5,
+    "att_name": "gender",
+    "att_type": "CHAR",
+    "att_len": 1,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1000,
+    "att_num": 6,
+    "att_name": "hire_date",
+    "att_type": "DATE",
+    "att_len": 10,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1002,
+    "att_num": 1,
+    "att_name": "id",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": true
+  },
+  {
+    "att_rel_id": 1002,
+    "att_num": 2,
+    "att_name": "name",
+    "att_type": "CHAR",
+    "att_len": 59,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1002,
+    "att_num": 3,
+    "att_name": "state_id",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1002,
+    "att_num": 4,
+    "att_name": "state_code",
+    "att_type": "CHAR",
+    "att_len": 5,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1002,
+    "att_num": 5,
+    "att_name": "state_name",
+    "att_type": "CHAR",
+    "att_len": 52,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1002,
+    "att_num": 6,
+    "att_name": "country_id",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1002,
+    "att_num": 7,
+    "att_name": "country_code",
+    "att_type": "CHAR",
+    "att_len": 2,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1002,
+    "att_num": 8,
+    "att_name": "country_name",
+    "att_type": "CHAR",
+    "att_len": 32,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1002,
+    "att_num": 9,
+    "att_name": "latitude",
+    "att_type": "REAL",
+    "att_len": 8,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1002,
+    "att_num": 10,
+    "att_name": "longitude",
+    "att_type": "REAL",
+    "att_len": 8,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1002,
+    "att_num": 11,
+    "att_name": "wikiDataId",
+    "att_type": "CHAR",
+    "att_len": 10,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 1,
+    "att_name": "pokedex_number",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": true
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 2,
+    "att_name": "name",
+    "att_type": "CHAR",
+    "att_len": 27,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 3,
+    "att_name": "type_1",
+    "att_type": "CHAR",
+    "att_len": 8,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 4,
+    "att_name": "type_2",
+    "att_type": "CHAR",
+    "att_len": 8,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 5,
+    "att_name": "hp",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 6,
+    "att_name": "attack",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 7,
+    "att_name": "defense",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 8,
+    "att_name": "sp_attack",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 9,
+    "att_name": "sp_defense",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 10,
+    "att_name": "speed",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 11,
+    "att_name": "base_stat_total",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 12,
+    "att_name": "height_m",
+    "att_type": "DOUBLE PRECISION",
+    "att_len": 8,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 13,
+    "att_name": "weight_kg",
+    "att_type": "DOUBLE PRECISION",
+    "att_len": 8,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 14,
+    "att_name": "base_experience",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 15,
+    "att_name": "abilities",
+    "att_type": "CHAR",
+    "att_len": 40,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 16,
+    "att_name": "hidden_ability",
+    "att_type": "CHAR",
+    "att_len": 16,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 17,
+    "att_name": "generation",
+    "att_type": "CHAR",
+    "att_len": 8,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 18,
+    "att_name": "is_legendary",
+    "att_type": "BOOLEAN",
+    "att_len": 1,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 19,
+    "att_name": "is_mythical",
+    "att_type": "BOOLEAN",
+    "att_len": 1,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 20,
+    "att_name": "is_baby",
+    "att_type": "BOOLEAN",
+    "att_len": 1,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 21,
+    "att_name": "color",
+    "att_type": "CHAR",
+    "att_len": 6,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 22,
+    "att_name": "shape",
+    "att_type": "CHAR",
+    "att_len": 9,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 23,
+    "att_name": "egg_groups",
+    "att_type": "CHAR",
+    "att_len": 24,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 24,
+    "att_name": "habitat",
+    "att_type": "CHAR",
+    "att_len": 13,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 25,
+    "att_name": "growth_rate",
+    "att_type": "CHAR",
+    "att_len": 19,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 26,
+    "att_name": "capture_rate",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 27,
+    "att_name": "base_happiness",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 28,
+    "att_name": "genus",
+    "att_type": "CHAR",
+    "att_len": 21,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 29,
+    "att_name": "evolution_chain_id",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1006,
+    "att_num": 30,
+    "att_name": "flavor_text",
+    "att_type": "CHAR",
+    "att_len": 219,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 1,
+    "att_name": "mal_id",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": true
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 2,
+    "att_name": "title",
+    "att_type": "CHAR",
+    "att_len": 98,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 3,
+    "att_name": "type",
+    "att_type": "CHAR",
+    "att_len": 2,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 4,
+    "att_name": "source",
+    "att_type": "CHAR",
+    "att_len": 12,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 5,
+    "att_name": "episodes",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 6,
+    "att_name": "status",
+    "att_type": "CHAR",
+    "att_len": 15,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 7,
+    "att_name": "airing",
+    "att_type": "BOOLEAN",
+    "att_len": 1,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 8,
+    "att_name": "aired_from",
+    "att_type": "DATE",
+    "att_len": 10,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 9,
+    "att_name": "aired_to",
+    "att_type": "DATE",
+    "att_len": 10,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 10,
+    "att_name": "duration",
+    "att_type": "CHAR",
+    "att_len": 13,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 11,
+    "att_name": "rating",
+    "att_type": "CHAR",
+    "att_len": 30,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 12,
+    "att_name": "score",
+    "att_type": "DOUBLE PRECISION",
+    "att_len": 8,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 13,
+    "att_name": "scored_by",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 14,
+    "att_name": "rank",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 15,
+    "att_name": "popularity",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 16,
+    "att_name": "members",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 17,
+    "att_name": "favorites",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 18,
+    "att_name": "season",
+    "att_type": "CHAR",
+    "att_len": 6,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 19,
+    "att_name": "year",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 20,
+    "att_name": "studios",
+    "att_type": "CHAR",
+    "att_len": 33,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 21,
+    "att_name": "producers",
+    "att_type": "CHAR",
+    "att_len": 176,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 22,
+    "att_name": "licensors",
+    "att_type": "CHAR",
+    "att_len": 62,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 23,
+    "att_name": "genres",
+    "att_type": "CHAR",
+    "att_len": 58,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 24,
+    "att_name": "themes",
+    "att_type": "CHAR",
+    "att_len": 61,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 25,
+    "att_name": "demographics",
+    "att_type": "CHAR",
+    "att_len": 7,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1012,
+    "att_num": 26,
+    "att_name": "synopsis",
+    "att_type": "CHAR",
+    "att_len": 1014,
+    "att_is_primary": false
+  }
+]
