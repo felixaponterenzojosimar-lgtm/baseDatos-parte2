@@ -1,6 +1,6 @@
 # Parser
 
-Este módulo reúne el estado actual del parser del proyecto. Su responsabilidad es transformar una consulta SQL del subconjunto definido por el equipo en tokens válidos y luego en nodos AST consumibles por el resto del sistema.
+Este modulo reune el estado actual del parser del proyecto. Su responsabilidad es transformar una consulta SQL del subconjunto definido por el equipo en tokens validos y luego en nodos AST consumibles por el resto del sistema.
 
 Pruebas manuales del lexer y parser:
 
@@ -8,9 +8,9 @@ Pruebas manuales del lexer y parser:
 python -m back.parser.__init__
 ```
 
-## Análisis Léxico
+## Analisis Lexico
 
-El análisis léxico está implementado en `lexical_analizer.py`. Su trabajo es recorrer la consulta carácter por carácter, validar que cada símbolo pertenezca al alfabeto aceptado por el proyecto y generar la secuencia de tokens que utilizará el parser.
+El analisis lexico esta implementado en `lexical_analyzer.py`. Su trabajo es recorrer la consulta caracter por caracter, validar que cada simbolo pertenezca al alfabeto aceptado por el proyecto y generar la secuencia de tokens que utilizara el parser.
 
 Actualmente el lexer reconoce:
 
@@ -21,18 +21,18 @@ Actualmente el lexer reconoce:
 - Delimitadores `(`, `)`, `,`, `;` y `*`
 - Operadores `=`, `<`, `>`, `<=`, `>=`, `BETWEEN`, `AND`, `IN`
 - Palabras clave `PRIMARY KEY` y `USING` para la declaracion obligatoria de la llave primaria y su tecnica de indice opcional
-- Técnicas de índice expresadas como combinaciones de keywords: `RTREE`, `BPLUS TREE`, `EXTENDIBLE HASHING` y `SEQUENTIAL FILE`
+- Tecnicas de indice expresadas como combinaciones de keywords: `RTREE`, `BPLUS TREE`, `EXTENDIBLE HASHING` y `SEQUENTIAL FILE`
 
-El lexer también soporta los tipos de datos de longitud fija acordados para el proyecto. Esta restricción se mantiene porque la capa de almacenamiento trabaja con registros de tamaño fijo.
+El lexer tambien soporta los tipos de datos de longitud fija acordados para el proyecto. Esta restriccion se mantiene porque la capa de almacenamiento trabaja con registros de tamano fijo.
 
-| Tipo de dato | Descripción | Tamaño fijo |
+| Tipo de dato | Descripcion | Tamano fijo |
 | --- | --- | --- |
-| `INTEGER` / `INT` | Entero de propósito general | 4 bytes |
-| `SMALLINT` | Entero pequeño | 2 bytes |
+| `INTEGER` / `INT` | Entero de proposito general | 4 bytes |
+| `SMALLINT` | Entero pequeno | 2 bytes |
 | `BIGINT` | Entero grande | 8 bytes |
-| `REAL` | Número de punto flotante | 4 bytes |
-| `DOUBLE PRECISION` | Número de punto flotante doble | 8 bytes |
-| `BOOLEAN` | Valor lógico verdadero o falso | 1 byte |
+| `REAL` | Numero de punto flotante | 4 bytes |
+| `DOUBLE PRECISION` | Numero de punto flotante doble | 8 bytes |
+| `BOOLEAN` | Valor logico verdadero o falso | 1 byte |
 | `CHAR(n)` | Cadena de longitud fija | `n` bytes |
 | `DATE` | Fecha sin componente de hora | 4 bytes |
 | `TIME` | Hora sin componente de fecha | 8 bytes |
@@ -43,21 +43,22 @@ Notas actuales del lexer:
 - El path de `FROM FILE` debe escribirse como `STRING_LITERAL`
 - El lexer rechaza caracteres inesperados antes de intentar tokenizar
 
-## Análisis Sintáctico
+## Analisis Sintactico
 
-El análisis sintáctico está implementado en `parser.py` mediante un parser descendente recursivo. Su entrada es la lista de tokens producida por `LexicalAnalizer`, y su salida es un nodo del AST definido en `ast_nodes.py`.
+El analisis sintactico esta implementado en `parser.py` mediante un parser descendente recursivo. Su entrada es la lista de tokens producida por `LexicalAnalyzer`, y su salida es un nodo del AST definido en `ast_nodes.py`.
 
-En la estructura actual del módulo:
+En la estructura actual del modulo:
 
-- `parser.py` conserva la API pública `Parser`
-- `Parser` mantiene la consulta recibida en `__init__` y ejecuta todo el pipeline en `parse()`
-- `LexicalAnalizer` recibe la consulta en `tokenize(sql)`
-- `syntactic_analyzer.py` concentra las reglas del análisis sintáctico
-- `SyntacticAnalyzer` recibe la lista de tokens en `parse(tokens)` y encapsula su excepción interna
-- `parser.py` traduce los errores sintácticos internos a `ParseError` para conservar la API pública estable
-- `semantic_analyzer.py` ejecuta la validación semántica posterior sobre el AST
+- `parser.py` conserva la API publica `Parser`
+- `Parser` es reutilizable: mantiene instancias persistentes del lexer, el parser sintactico y el verificador semantico
+- La consulta SQL se entrega en `parse(sql)`
+- `LexicalAnalyzer` recibe la consulta en `tokenize(sql)`
+- `syntactic_analyzer.py` concentra las reglas del analisis sintactico
+- `SyntacticAnalyzer` recibe la lista de tokens en `parse(tokens)` y encapsula su excepcion interna
+- `parser.py` traduce los errores sintacticos internos a `ParseError` para conservar la API publica estable
+- `semantic_analyzer.py` ejecuta la validacion semantica posterior sobre el AST
 
-Gramática actual del subconjunto:
+Gramatica actual del subconjunto:
 
 ```ebnf
 query ::= create_table_stmt
@@ -156,18 +157,18 @@ Sentencias soportadas en el estado actual:
 11. `INSERT INTO <table> VALUES (...);`
 12. `DELETE FROM <table> WHERE <column> = <value>;`
 
-Reglas sintácticas ya consolidadas:
+Reglas sintacticas ya consolidadas:
 
 - Cada entrada del parser contiene una sola consulta
 - El punto y coma final es obligatorio
 - `CREATE TABLE` acepta `FROM FILE` solo con una cadena entre comillas simples
-- `CREATE TABLE` ya no declara índices; solo esquema y `PRIMARY KEY`
+- `CREATE TABLE` ya no declara indices; solo esquema y `PRIMARY KEY`
 - `PRIMARY KEY USING` solo permite `BPLUS TREE`, `EXTENDIBLE HASHING` o `SEQUENTIAL FILE`
-- `CREATE INDEX` exige nombre explícito del índice y separa los índices escalares de `RTREE`
-- `DROP INDEX` exige nombre explícito del índice y nombre de tabla
-- `DELETE` solo acepta comparación por igualdad
+- `CREATE INDEX` exige nombre explicito del indice y separa los indices escalares de `RTREE`
+- `DROP INDEX` exige nombre explicito del indice y nombre de tabla
+- `DELETE` solo acepta comparacion por igualdad
 - `SELECT` acepta `=`, `<`, `>`, `<=`, `>=`, `BETWEEN` y las dos variantes espaciales con `POINT`
-- La llave primaria puede usarse tanto para búsquedas exactas como para búsquedas por rango
+- La llave primaria puede usarse tanto para busquedas exactas como para busquedas por rango
 
 Nodos AST actualmente definidos:
 
@@ -176,6 +177,7 @@ Nodos AST actualmente definidos:
 - `DropTableNode`
 - `DropIndexNode`
 - `InsertNode`
+- `SelectAllNode`
 - `SelectEqualNode`
 - `SelectComparisonNode`
 - `SelectRangeNode`
@@ -183,52 +185,50 @@ Nodos AST actualmente definidos:
 - `SelectKNNNode`
 - `DeleteNode`
 
-## Verificación Semántica
+## Verificacion Semantica
 
-La verificación semántica se encuentra en una primera etapa de implementación. Actualmente existe una revisión semántica inicial sobre el AST, sin depender todavía del motor de almacenamiento.
+La verificacion semantica consulta el catalogo persistido del proyecto antes de que el nodo llegue al engine. La fuente de verdad actual es:
 
-Por el momento, el parser valida estructura y forma de los tokens, y además puede ejecutar una primera capa de validaciones semánticas que dependen únicamente del AST y de la definición local de la consulta.
+- `back/data/catalog/pg_class.json`
+- `back/data/catalog/pg_attribute.json`
+- `back/data/catalog/pg_index.json`
+- `back/data/catalog/pg_constraint.json`
 
-Restricciones semánticas implementadas actualmente:
+Restricciones semanticas implementadas actualmente:
 
-- Verificar que no existan nombres de columna repetidos dentro de una misma tabla
+- Verificar que no existan nombres de columna repetidos dentro de una misma tabla en `CREATE TABLE`
 - Verificar que `CREATE TABLE` declare exactamente una columna `PRIMARY KEY`
 - Verificar que `PRIMARY KEY USING` solo use una tecnica de indice primaria permitida
-- Verificar que `CHAR(n)` use un tamaño entero positivo mayor que cero
+- Verificar que no se intente crear una tabla con un nombre ya existente en el catalogo
+- Verificar que `CHAR(n)` use un tamano entero positivo mayor que cero
+- Verificar que `CREATE INDEX` apunte a una tabla existente
+- Verificar que las columnas referenciadas por `CREATE INDEX`, `SELECT`, `DELETE` e `INSERT` existan realmente en el esquema de la tabla
+- Verificar que no exista ya un indice secundario con el mismo nombre en la misma tabla
 - Verificar que `CREATE INDEX USING RTREE` declare exactamente dos columnas distintas
 - Verificar que `CREATE INDEX` escalar declare exactamente una columna
-- Verificar que `BETWEEN` reciba dos literales comparables entre sí
-- Verificar que `K` reciba un entero positivo en búsquedas `IN (POINT(...), K ...)`
-- Verificar que `RADIUS` reciba un valor numérico positivo
-- Verificar que `POINT(x, y)` reciba coordenadas numéricas
-- Verificar que una declaración `FROM FILE` use un `STRING_LITERAL` no vacío
-- Verificar formato semántico básico de literales `DATE 'yyyy-mm-dd'` y `TIME 'hh:mm:ss'`
+- Verificar que `DROP TABLE` apunte a una tabla existente
+- Verificar que `DROP INDEX` apunte a una tabla existente y a un indice secundario realmente definido en ella
+- Verificar que `INSERT` reciba la cantidad exacta de valores que la tabla espera
+- Verificar compatibilidad basica entre literales del parser y tipos declarados de columna
+- Verificar que `BETWEEN` reciba dos literales comparables entre si
+- Verificar que `K` reciba un entero positivo en busquedas `IN (POINT(...), K ...)`
+- Verificar que `RADIUS` reciba un valor numerico positivo
+- Verificar que `POINT(x, y)` reciba coordenadas numericas
+- Verificar que una consulta espacial solo se ejecute sobre una tabla que tenga al menos un indice `RTREE`
+- Verificar que una declaracion `FROM FILE` use un `STRING_LITERAL` no vacio
+- Verificar formato semantico de literales `DATE 'yyyy-mm-dd'` y `TIME 'hh:mm:ss'`
 
-Restricciones cubiertas actualmente por el análisis sintáctico:
+Restricciones que siguen fuera del verificador y permanecen en el engine o en los indices:
 
-- Verificar que `CREATE TABLE` defina al menos una columna
-- Verificar que `PRIMARY KEY` esté escrita como palabra compuesta completa
-- Verificar que una técnica de índice compuesta esté completa y sea coherente con la gramática aceptada
-- Verificar que `DELETE` y `SELECT` usen operadores permitidos para el subconjunto SQL definido
+- Deteccion de clave primaria duplicada al insertar
+- Logica fisica de actualizacion de indices primarios y secundarios
+- Ejecucion de scans secuenciales, scans por indice y consultas espaciales
+- Metricas de I/O y tiempo
+- Errores internos de lectura y escritura sobre archivos e indices
 
-Restricciones semánticas que dependen de un motor funcional:
+En consecuencia, el estado actual del modulo debe interpretarse asi:
 
-- Verificar que la tabla referenciada exista realmente en la base de datos
-- Verificar que las columnas referenciadas existan en el esquema persistido de la tabla
-- Verificar que el número de valores de `INSERT` coincida con el esquema real almacenado
-- Verificar tipos contra el esquema real de una tabla ya creada
-- Verificar que los valores de `INSERT` tengan una cantidad compatible con las columnas declaradas cuando el análisis cuente con el esquema real de la tabla
-- Verificar compatibilidad básica entre tipos declarados y literales cuando el esquema de la tabla esté disponible en memoria durante el análisis
-- Verificar que no se intente crear una tabla con un nombre ya existente en el catálogo persistente
-- Verificar que el archivo indicado en `FROM FILE` exista realmente y pueda abrirse
-- Verificar que las columnas requeridas por un `RTREE` correspondan a un esquema espacial válido en el motor
-- Verificar que la técnica de índice declarada sea compatible con las operaciones que luego se intenten ejecutar sobre la tabla
-- Verificar claves duplicadas, integridad de clave primaria o conflictos de inserción
-- Verificar restricciones apoyadas en datos almacenados, como búsquedas, borrados o rangos sobre registros realmente persistidos
-
-En consecuencia, el estado actual del módulo debe interpretarse así:
-
-- El análisis léxico está operativo
-- El análisis sintáctico está operativo dentro del subconjunto definido
-- La verificación semántica ya puede aplicarse sobre reglas que dependan del AST y del contexto inmediato
-- La verificación semántica dependiente del estado real de la base debe esperar a que el motor y la persistencia estén completos
+- El analisis lexico esta operativo
+- El analisis sintactico esta operativo dentro del subconjunto definido
+- La verificacion semantica ya depende del catalogo real de la base
+- El engine sigue siendo responsable de la ejecucion fisica

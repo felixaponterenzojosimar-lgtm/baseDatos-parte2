@@ -30,6 +30,7 @@ app.add_middleware(
 
 db = Database()
 executor = Executor(db)
+parser = Parser()
 _metrics_history: deque = deque(maxlen=1000)
 
 # ------------------------------------------------------------------
@@ -83,7 +84,7 @@ class ScheduleRequest(BaseModel):
 @app.post("/api/v1/query")
 def run_query(req: QueryRequest):
     try:
-        node = Parser(req.sql).parse()
+        node = parser.parse(req.sql)
     except (ParseError, SemanticError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 

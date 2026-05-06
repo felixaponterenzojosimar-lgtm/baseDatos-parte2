@@ -1,0 +1,38 @@
+[
+  {
+    "con_name": "employee_pkey",
+    "con_type": "primary_key",
+    "con_rel_id": 1000,
+    "con_ind_id": 1001,
+    "con_key": [
+      1
+    ]
+  },
+  {
+    "con_name": "cities_pkey",
+    "con_type": "primary_key",
+    "con_rel_id": 1002,
+    "con_ind_id": 1003,
+    "con_key": [
+      1
+    ]
+  },
+  {
+    "con_name": "pokemon_pkey",
+    "con_type": "primary_key",
+    "con_rel_id": 1006,
+    "con_ind_id": 1007,
+    "con_key": [
+      1
+    ]
+  },
+  {
+    "con_name": "anime_probe_pkey",
+    "con_type": "primary_key",
+    "con_rel_id": 1012,
+    "con_ind_id": 1013,
+    "con_key": [
+      1
+    ]
+  }
+]
