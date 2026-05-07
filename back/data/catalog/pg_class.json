@@ -78,5 +78,45 @@
     "rel_natts": 1,
     "rel_am": "sequential",
     "rel_file_node": "anime_probe_pk_mal_id"
+  },
+  {
+    "oid": 1014,
+    "rel_name": "personas",
+    "rel_kind": "table",
+    "rel_natts": 3,
+    "rel_am": "bplus",
+    "rel_file_node": "personas_pk_id"
+  },
+  {
+    "oid": 1015,
+    "rel_name": "pk_personas_id",
+    "rel_kind": "index",
+    "rel_natts": 1,
+    "rel_am": "bplus",
+    "rel_file_node": "personas_pk_id"
+  },
+  {
+    "oid": 1016,
+    "rel_name": "lugares",
+    "rel_kind": "table",
+    "rel_natts": 4,
+    "rel_am": "bplus",
+    "rel_file_node": "lugares_pk_id"
+  },
+  {
+    "oid": 1017,
+    "rel_name": "pk_lugares_id",
+    "rel_kind": "index",
+    "rel_natts": 1,
+    "rel_am": "bplus",
+    "rel_file_node": "lugares_pk_id"
+  },
+  {
+    "oid": 1018,
+    "rel_name": "idx_rtree",
+    "rel_kind": "index",
+    "rel_natts": 2,
+    "rel_am": "rtree",
+    "rel_file_node": "lugares_idx_rtree"
   }
 ]

@@ -59,5 +59,36 @@
       1
     ],
     "ind_class": "sequential"
+  },
+  {
+    "index_rel_id": 1015,
+    "ind_rel_id": 1014,
+    "ind_is_primary": true,
+    "ind_is_unique": true,
+    "ind_key": [
+      1
+    ],
+    "ind_class": "bplus"
+  },
+  {
+    "index_rel_id": 1017,
+    "ind_rel_id": 1016,
+    "ind_is_primary": true,
+    "ind_is_unique": true,
+    "ind_key": [
+      1
+    ],
+    "ind_class": "bplus"
+  },
+  {
+    "index_rel_id": 1018,
+    "ind_rel_id": 1016,
+    "ind_is_primary": false,
+    "ind_is_unique": false,
+    "ind_key": [
+      3,
+      4
+    ],
+    "ind_class": "rtree"
   }
 ]

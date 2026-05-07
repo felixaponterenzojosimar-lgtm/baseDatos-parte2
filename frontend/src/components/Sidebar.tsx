@@ -117,7 +117,7 @@ export function Sidebar({ tables, loading, onRefresh, onDrop, onSelectTable, sel
                             })}
                           </ul>
                           <div className="flex gap-1.5 mt-2">
-                            {t.index_type === "rtree" && (
+                            {(t.index_type === "rtree" || t.secondary_indexes && Object.values(t.secondary_indexes).some((v: any) => v.type === "rtree")) && (
                               <button
                                 onClick={() => onShowRTree(t.name)}
                                 className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-slate-600 text-slate-300 hover:border-violet-500 hover:text-violet-400 transition-colors"

@@ -34,5 +34,23 @@
     "con_key": [
       1
     ]
+  },
+  {
+    "con_name": "personas_pkey",
+    "con_type": "primary_key",
+    "con_rel_id": 1014,
+    "con_ind_id": 1015,
+    "con_key": [
+      1
+    ]
+  },
+  {
+    "con_name": "lugares_pkey",
+    "con_type": "primary_key",
+    "con_rel_id": 1016,
+    "con_ind_id": 1017,
+    "con_key": [
+      1
+    ]
   }
 ]

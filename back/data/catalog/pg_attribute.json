@@ -582,5 +582,61 @@
     "att_type": "CHAR",
     "att_len": 1014,
     "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1014,
+    "att_num": 1,
+    "att_name": "id",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": true
+  },
+  {
+    "att_rel_id": 1014,
+    "att_num": 2,
+    "att_name": "nombre",
+    "att_type": "CHAR",
+    "att_len": 50,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1014,
+    "att_num": 3,
+    "att_name": "edad",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1016,
+    "att_num": 1,
+    "att_name": "id",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": true
+  },
+  {
+    "att_rel_id": 1016,
+    "att_num": 2,
+    "att_name": "nombre",
+    "att_type": "CHAR",
+    "att_len": 50,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1016,
+    "att_num": 3,
+    "att_name": "lat",
+    "att_type": "REAL",
+    "att_len": 8,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1016,
+    "att_num": 4,
+    "att_name": "lon",
+    "att_type": "REAL",
+    "att_len": 8,
+    "att_is_primary": false
   }
 ]
