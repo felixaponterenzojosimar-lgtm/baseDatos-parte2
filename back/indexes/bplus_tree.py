@@ -5,17 +5,24 @@ import bisect
 import os
 
 class BPlusTree(Index):
-    def __init__(self, schema: Schema, page_manager: PageManager, stats: DiskStats):
+    def __init__(self, schema: Schema, page_manager: PageManager, stats: DiskStats, clustered: bool = True):
         super().__init__(schema, page_manager, stats)
         self.schema = schema
         self.page_manager = page_manager
         self.stats = stats
+        # clustered=True  → índice primario: registros completos, sin duplicados
+        # clustered=False → índice secundario: refs (key, pk), duplicados permitidos
+        self.clustered = clustered
         self._root_path = page_manager.filepath.replace(".bin", ".root")
+        self._first_leaf_path = page_manager.filepath.replace(".bin", ".first_leaf")
         self.root_id = self._load_root()
+        self._first_leaf_id = self._load_first_leaf()
         # Si el archivo está vacío pero el root apunta a una página, resetear
         if self.root_id is not None and self.root_id >= self.page_manager.total_pages():
             self.root_id = None
+            self._first_leaf_id = None
             self._save_root()
+            self._save_first_leaf()
 
     def _load_root(self):
         if not os.path.exists(self._root_path):
@@ -30,6 +37,26 @@ class BPlusTree(Index):
     def _save_root(self):
         with open(self._root_path, "wb") as f:
             f.write(struct.pack(">i", self.root_id if self.root_id is not None else -1))
+
+    def _load_first_leaf(self):
+        if not os.path.exists(self._first_leaf_path):
+            fl = self._leftmost_leaf()
+            if fl is not None:
+                self._save_first_leaf_raw(fl)
+            return fl
+        with open(self._first_leaf_path, "rb") as f:
+            data = f.read(4)
+        if len(data) < 4:
+            return None
+        val = struct.unpack(">i", data)[0]
+        return val if val >= 0 else None
+
+    def _save_first_leaf(self):
+        self._save_first_leaf_raw(self._first_leaf_id)
+
+    def _save_first_leaf_raw(self, page_id):
+        with open(self._first_leaf_path, "wb") as f:
+            f.write(struct.pack(">i", page_id if page_id is not None else -1))
 
     def search(self, key):
         leaf_id = self._find_leaf(key)
@@ -54,14 +81,83 @@ class BPlusTree(Index):
             self.schema.primary_key: key,
             self.schema.fields[1].name: primary_key_value,
         }
-        self.add(record)
+        if self.clustered:
+            self.add(record)
+        else:
+            self._add_unclustered(record)
+
+    def _add_unclustered(self, record) -> None:
+        """Inserta en modo no agrupado permitiendo claves duplicadas."""
+        key = record[self.schema.primary_key]
+        is_first = self.root_id is None
+        if is_first:
+            self.root_id = self.page_manager.allocate_page()
+            self._first_leaf_id = self.root_id
+            self._save_root()
+            self._save_first_leaf()
+            new_node = {"is_leaf": True, "keys": [key], "children": [record], "next_leaf": 0}
+            self._write_node(self.root_id, new_node)
+            return
+        res = self._insert_recursive_unclustered(self.root_id, record)
+        if res:
+            promoted_key, new_child_id = res
+            new_root_id = self.page_manager.allocate_page()
+            new_root = {"is_leaf": False, "keys": [promoted_key], "children": [self.root_id, new_child_id]}
+            self.root_id = new_root_id
+            self._save_root()
+            self._write_node(new_root_id, new_root)
+
+    def _insert_recursive_unclustered(self, curr_id, record):
+        node = self._read_node(curr_id)
+        key = record[self.schema.primary_key]
+        if node["is_leaf"]:
+            idx = bisect.bisect_right(node["keys"], key)  # permite duplicados
+            node["keys"].insert(idx, key)
+            node["children"].insert(idx, record)
+            if len(node["keys"]) > 3:
+                return self._split_leaf(curr_id, node)
+            self._write_node(curr_id, node)
+            return None
+        else:
+            idx = bisect.bisect_right(node["keys"], key)
+            res = self._insert_recursive_unclustered(node["children"][idx], record)
+            if res:
+                prom_key, new_id = res
+                node["keys"].insert(idx, prom_key)
+                node["children"].insert(idx + 1, new_id)
+                if len(node["keys"]) > 3:
+                    return self._split_internal(curr_id, node)
+                self._write_node(curr_id, node)
+            return None
 
     def remove_ref(self, primary_key_value) -> bool:
+        """Elimina la referencia cuyo pk_field == primary_key_value."""
         pk_field_name = self.schema.fields[1].name
         for item in self.iter_record_refs():
             if item["record"][pk_field_name] == primary_key_value:
                 key = item["record"][self.schema.primary_key]
-                return self.remove(key)
+                return self._remove_unclustered(key, primary_key_value) if not self.clustered else self.remove(key)
+        return False
+
+    def _remove_unclustered(self, key, pk_value) -> bool:
+        """Elimina la primera entrada con (key, pk_value) en modo no agrupado."""
+        pk_field_name = self.schema.fields[1].name
+        leaf_id = self._find_leaf(key)
+        if leaf_id is None:
+            return False
+        curr_id = leaf_id
+        while curr_id is not None:
+            node = self._read_node(curr_id)
+            for i, k in enumerate(node["keys"]):
+                if k > key:
+                    return False
+                if k == key and node["children"][i].get(pk_field_name) == pk_value:
+                    node["keys"].pop(i)
+                    node["children"].pop(i)
+                    self._write_node(curr_id, node)
+                    return True
+            next_p = node.get("next_leaf", 0)
+            curr_id = next_p if next_p != 0 else None
         return False
 
     def read_record_ref(self, page_id: int, slot: int, source_id: int = 0) -> dict:
@@ -75,7 +171,8 @@ class BPlusTree(Index):
     def iter_record_refs(self):
         if self.root_id is None:
             return
-        curr_id = self._leftmost_leaf()
+        # Usa el puntero persistente a la primera hoja para evitar recorrer el árbol
+        curr_id = self._first_leaf_id if self._first_leaf_id is not None else self._leftmost_leaf()
         while curr_id is not None:
             node = self._read_node(curr_id)
             for slot, record in enumerate(node["children"]):
@@ -85,9 +182,12 @@ class BPlusTree(Index):
 
     def add(self, record):
         key = record[self.schema.primary_key]
-        if self.root_id is None:
+        is_first = self.root_id is None
+        if is_first:
             self.root_id = self.page_manager.allocate_page()
+            self._first_leaf_id = self.root_id
             self._save_root()
+            self._save_first_leaf()
             new_node = {"is_leaf": True, "keys": [key], "children": [record], "next_leaf": 0}
             self._write_node(self.root_id, new_node)
             return
@@ -106,7 +206,7 @@ class BPlusTree(Index):
         if node["is_leaf"]:
             idx = bisect.bisect_left(node["keys"], key)
             if idx < len(node["keys"]) and node["keys"][idx] == key:
-                raise Exception("Clave duplicada")
+                raise DuplicateKeyError(f"Clave duplicada: {key}")
             node["keys"].insert(idx, key)
             node["children"].insert(idx, record)
             if len(node["keys"]) > 3: return self._split_leaf(curr_id, node)

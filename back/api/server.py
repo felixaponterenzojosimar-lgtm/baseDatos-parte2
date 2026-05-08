@@ -13,10 +13,11 @@ from ..engine.executor import ExecutionError
 from ..indexes import SequentialFile, ExtendibleHashing, BPlusTree, RTree
 from ..storage.schema import Field, FieldType, Schema
 from ..engine.database import DATA_DIR
+from ..parser.ast_nodes import SelectPointRadiusNode, SelectKNNNode
 from ..parser.ast_nodes import (
     CreateTableNode, CreateIndexNode, InsertNode, SelectAllNode, SelectEqualNode,
     SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
-    DropTableNode, DropIndexNode,
+    DropTableNode, DropIndexNode, ImportFileNode,
 )
 
 app = FastAPI(title="Mini-SGBD API")
@@ -30,7 +31,7 @@ app.add_middleware(
 
 db = Database()
 executor = Executor(db)
-parser = Parser()
+parser = Parser(db=db)
 _metrics_history: deque = deque(maxlen=1000)
 
 # ------------------------------------------------------------------
@@ -43,6 +44,7 @@ _NODE_OP = {
     DropTableNode:         "DROP TABLE",
     DropIndexNode:         "DROP INDEX",
     InsertNode:            "INSERT",
+    ImportFileNode:        "IMPORT FILE",
     SelectAllNode:         "SELECT ALL",
     SelectEqualNode:       "SELECT",
     SelectComparisonNode:  "SELECT",
@@ -102,10 +104,49 @@ def run_query(req: QueryRequest):
     node_type = type(node)
     if node_type in (CreateTableNode, CreateIndexNode, DropTableNode, DropIndexNode, InsertNode):
         message = f"{_NODE_OP[node_type]} ejecutado correctamente"
+    elif node_type == ImportFileNode:
+        imported = rows[0]["imported"] if rows else 0
+        message = f"IMPORT FILE: {imported} registros importados"
+        rows = []
     elif node_type == DeleteNode:
         deleted = rows[0]["deleted"] if rows else False
         message = "Registro eliminado" if deleted else "Registro no encontrado"
         rows = []
+
+    # Metadatos espaciales para queries espaciales (usados por el frontend para graficar)
+    spatial_meta = None
+    if node_type == SelectPointRadiusNode:
+        spatial_meta = {
+            "type": "radius",
+            "point": list(node.point),
+            "radius": node.radius,
+            "lat_col": None,
+            "lon_col": None,
+        }
+        try:
+            t = db.get_table(node.table_name)
+            if t.spatial_indexes:
+                sp_entry = next(iter(t.spatial_indexes.values()))
+                spatial_meta["lat_col"] = sp_entry["columns"][0]
+                spatial_meta["lon_col"] = sp_entry["columns"][1]
+        except Exception:
+            pass
+    elif node_type == SelectKNNNode:
+        spatial_meta = {
+            "type": "knn",
+            "point": list(node.point),
+            "k": node.k,
+            "lat_col": None,
+            "lon_col": None,
+        }
+        try:
+            t = db.get_table(node.table_name)
+            if t.spatial_indexes:
+                sp_entry = next(iter(t.spatial_indexes.values()))
+                spatial_meta["lat_col"] = sp_entry["columns"][0]
+                spatial_meta["lon_col"] = sp_entry["columns"][1]
+        except Exception:
+            pass
 
     op_name = _NODE_OP.get(node_type, "UNKNOWN")
     table = _table_name_from(node)
@@ -120,13 +161,14 @@ def run_query(req: QueryRequest):
     })
 
     return {
-        "columns":   columns,
-        "rows":      rows,
-        "row_count": len(rows),
-        "reads":     stats["reads"],
-        "writes":    stats["writes"],
-        "time_ms":   stats["time_ms"],
-        "message":   message,
+        "columns":      columns,
+        "rows":         rows,
+        "row_count":    len(rows),
+        "reads":        stats["reads"],
+        "writes":       stats["writes"],
+        "time_ms":      stats["time_ms"],
+        "message":      message,
+        "spatial_meta": spatial_meta,
     }
 
 
@@ -142,12 +184,12 @@ def list_tables():
             "primary_index_type": table.primary_index_type,
             "data_file": table.index.pm.filepath,
             "secondary_indexes": [
-                {
-                    "name": index_name,
-                    "type": meta["type"],
-                    "columns": meta["columns"],
-                }
+                {"name": index_name, "type": meta["type"], "columns": meta["columns"]}
                 for index_name, meta in table.secondary_indexes.items()
+            ],
+            "spatial_indexes": [
+                {"name": index_name, "type": meta["type"], "columns": meta["columns"]}
+                for index_name, meta in table.spatial_indexes.items()
             ],
         })
     return {"tables": tables, "count": len(tables)}
@@ -168,14 +210,10 @@ def get_rtree_points(table: str):
         t = db.get_table(table)
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    rtree_index = None
-    for secondary_entry in t.secondary_indexes.values():
-        if secondary_entry["type"] == "rtree":
-            rtree_index = secondary_entry["index"]
-            break
-    if rtree_index is None:
-        raise HTTPException(status_code=400, detail=f"'{table}' no usa índice RTree")
-    raw = rtree_index.all_points()
+    if not t.spatial_indexes:
+        raise HTTPException(status_code=400, detail=f"'{table}' no tiene un índice espacial")
+    spatial_index = next(iter(t.spatial_indexes.values()))["index"]
+    raw = spatial_index.all_points()
     points = []
     for point in raw:
         record = db.resolve_primary_key(t, point["pk"])
@@ -260,12 +298,10 @@ async def upload_csv_table(
 
     for si in sec_indexes_data:
         try:
-            index_name = si.get("name", f"idx_{table_name}_{'_'.join(si.get('columns', [si.get('column')]))}")
-            columns = si.get("columns")
-            if columns is None:
-                columns = [si["column"]]
-            db.add_secondary_index(table_name, index_name, columns, si["index_type"])
+            cols = si.get("columns") or [si["column"]]
+            index_name = si.get("name", f"idx_{table_name}_{'_'.join(cols)}")
+            db.add_secondary_index(table_name, index_name, cols, si["index_type"])
         except Exception as e:
-            raise HTTPException(status_code=422, detail=f"Error creando índice secundario '{index_name}': {e}")
+            raise HTTPException(status_code=422, detail=f"Error creando indice '{index_name}': {e}")
 
     return {"message": f"Tabla '{table_name}' creada con {count} registros", "table": table_name, "rows_loaded": count}

@@ -30,6 +30,7 @@ class Table:
         self.primary_index_name = primary_index_name
         self.primary_constraint_name = primary_constraint_name
         self.secondary_indexes: dict[str, dict] = {}  # index_name -> {"index", "type", "columns", "rel_oid", "storage_name"}
+        self.spatial_indexes: dict[str, dict] = {}   # index_name -> {"index", "type", "columns", "rel_oid", "storage_name"}
 
     def __repr__(self):
         return f"Table('{self.name}', {self.schema}, index={type(self.index).__name__})"

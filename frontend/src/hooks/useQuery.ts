@@ -15,20 +15,22 @@ export function useQuery() {
     loading: false,
   });
 
-  const execute = useCallback(async (sql: string) => {
+  const execute = useCallback(async (sql: string): Promise<QueryResult | null> => {
     const trimmed = sql.trim();
-    if (!trimmed) return;
+    if (!trimmed) return null;
 
     setState({ result: null, error: null, loading: true });
     try {
       const result = await api.executeQuery(trimmed);
       setState({ result, error: null, loading: false });
+      return result;
     } catch (err) {
       setState({
         result: null,
         error: err instanceof Error ? err.message : String(err),
         loading: false,
       });
+      return null;
     }
   }, []);
 

@@ -57,7 +57,7 @@ export function Sidebar({ tables, loading, onRefresh, onDrop, onSelectTable, sel
         <ul className="overflow-y-auto flex-1">
           <AnimatePresence initial={false}>
             {tables.map((t, i) => {
-              const badge = INDEX_BADGE[t.index_type] ?? { label: t.index_type, color: "#64748b" };
+              const badge = INDEX_BADGE[t.primary_index_type] ?? { label: t.primary_index_type, color: "#64748b" };
               const isOpen = expanded === t.name;
               const isActive = selectedTable === t.name;
 
@@ -100,15 +100,17 @@ export function Sidebar({ tables, loading, onRefresh, onDrop, onSelectTable, sel
                         <div className="px-3 pb-3 pt-1 bg-slate-900/40">
                           <ul className="space-y-0.5 mb-2">
                             {t.columns.map((c) => {
-                              const secIdxType = t.secondary_indexes?.[c.name];
+                              const secIdx = t.secondary_indexes?.find(idx => idx.columns.includes(c.name));
+                              const spatIdx = t.spatial_indexes?.find(idx => idx.columns.includes(c.name));
+                              const anyIdx = secIdx ?? spatIdx;
                               return (
                                 <li key={c.name} className="flex justify-between text-xs py-0.5 gap-1">
                                   <span className="text-slate-300 truncate">{c.name}</span>
                                   <span className="flex items-center gap-1 shrink-0">
                                     <span className="text-slate-500 italic">{c.type}</span>
-                                    {secIdxType && (
+                                    {anyIdx && (
                                       <span className="px-1 py-px text-[9px] font-bold rounded bg-amber-800/60 text-amber-300 border border-amber-700/50">
-                                        2°{secIdxType.toUpperCase().slice(0,3)}
+                                        2°{anyIdx.type.toUpperCase().slice(0, 3)}
                                       </span>
                                     )}
                                   </span>
@@ -117,7 +119,7 @@ export function Sidebar({ tables, loading, onRefresh, onDrop, onSelectTable, sel
                             })}
                           </ul>
                           <div className="flex gap-1.5 mt-2">
-                            {(t.index_type === "rtree" || t.secondary_indexes && Object.values(t.secondary_indexes).some((v: any) => v.type === "rtree")) && (
+                            {(t.spatial_indexes?.length > 0) && (
                               <button
                                 onClick={() => onShowRTree(t.name)}
                                 className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-slate-600 text-slate-300 hover:border-violet-500 hover:text-violet-400 transition-colors"

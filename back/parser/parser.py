@@ -13,10 +13,10 @@ class Parser:
     # ------------------------------------------------------------------------------
     # API publica del parser: Inicializa las 3 fases del parser.
     # ------------------------------------------------------------------------------
-    def __init__(self):
+    def __init__(self, db=None):
         self.lexical_analyzer   = LexicalAnalyzer()
         self.syntactic_analyzer = SyntacticAnalyzer()
-        self.semantic_analyzer  = SemanticAnalyzer()
+        self.semantic_analyzer  = SemanticAnalyzer(db=db)
 
     # ------------------------------------------------------------------------------
     # API publica del parser: Recibe la consulta y la analiza.

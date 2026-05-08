@@ -123,3 +123,11 @@ class DropIndexNode:
     def __init__(self, index_name: str, table_name: str):
         self.index_name = index_name
         self.table_name = table_name
+
+
+class ImportFileNode:
+    """IMPORT FILE 'ruta' INTO tabla"""
+
+    def __init__(self, table_name: str, filepath: str):
+        self.table_name = table_name
+        self.filepath = filepath

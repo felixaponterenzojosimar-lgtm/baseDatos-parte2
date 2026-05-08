@@ -1,11 +1,11 @@
 from .database import Database
-from ..indexes import RTree, NotSupportedError
+from ..indexes import NotSupportedError
 from ..indexes.extendible_hashing import ExtendibleHashing
 from ..indexes.base_index import DuplicateKeyError
 from ..parser.ast_nodes import (
     CreateTableNode, CreateIndexNode, InsertNode, SelectAllNode, SelectEqualNode,
     SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
-    DropTableNode, DropIndexNode,
+    DropTableNode, DropIndexNode, ImportFileNode,
 )
 
 
@@ -41,6 +41,7 @@ class Executor:
             DropTableNode:         self._exec_drop_table,
             DropIndexNode:         self._exec_drop_index,
             InsertNode:            self._exec_insert,
+            ImportFileNode:        self._exec_import_file,
             SelectAllNode:         self._exec_select_all,
             SelectEqualNode:       self._exec_select_equal,
             SelectComparisonNode:  self._exec_select_comparison,
@@ -91,6 +92,11 @@ class Executor:
         self.db.drop_secondary_index(node.table_name, node.index_name)
         return []
 
+    def _exec_import_file(self, node: ImportFileNode) -> list:
+        table = self.db.get_table(node.table_name)
+        count = self.db._load_csv(table, node.filepath)
+        return [{"imported": count}]
+
     def _exec_insert(self, node: InsertNode) -> list:
         """
         Mapea los valores posicionales a los campos del schema y llama add().
@@ -112,27 +118,22 @@ class Executor:
         primary_key_value = record[table.schema.primary_key]
         for secondary_entry in table.secondary_indexes.values():
             try:
-                if secondary_entry["type"] == "rtree":
-                    if hasattr(secondary_entry["index"], "add_ref"):
-                        lat_column, lon_column = secondary_entry["columns"]
-                        secondary_entry["index"].add_ref(
-                            record[lat_column],
-                            record[lon_column],
-                            primary_key_value,
-                        )
-                else:
-                    if hasattr(secondary_entry["index"], "add_ref"):
-                        column_name = secondary_entry["columns"][0]
-                        secondary_entry["index"].add_ref(record[column_name], primary_key_value)
+                column_name = secondary_entry["columns"][0]
+                secondary_entry["index"].add_ref(record[column_name], primary_key_value)
             except DuplicateKeyError:
                 pass
+        for spatial_entry in table.spatial_indexes.values():
+            lat_column, lon_column = spatial_entry["columns"]
+            spatial_entry["index"].add_ref(
+                record[lat_column],
+                record[lon_column],
+                primary_key_value,
+            )
         return []
 
     def _exec_select_all(self, node: SelectAllNode) -> list:
         table = self.db.get_table(node.table_name)
         index = table.index
-        if isinstance(index, RTree):
-            return [p["record"] for p in index.all_points()]
         if isinstance(index, ExtendibleHashing):
             return index.scan_all()
         from ..storage.schema import FieldType
@@ -144,10 +145,10 @@ class Executor:
         return index.range_search("", chr(127) * pk.size)
 
     def _exec_select_equal(self, node: SelectEqualNode) -> list:
-        """Busqueda exacta por clave."""
+        """Busqueda exacta por clave. Usa indice secundario, PK o sequential scan."""
         table = self.db.get_table(node.table_name)
         for secondary_entry in table.secondary_indexes.values():
-            if secondary_entry["type"] != "rtree" and secondary_entry["columns"] == [node.column]:
+            if secondary_entry["columns"] == [node.column]:
                 field = table.schema.get_field(node.column)
                 key = self._cast_value(node.value, field)
                 ref_record = secondary_entry["index"].search(key)
@@ -155,74 +156,73 @@ class Executor:
                     return []
                 record = self.db.resolve_primary_key(table, ref_record[table.schema.primary_key])
                 return [record] if record is not None else []
-        key = self._cast_key(node.value, table, node.column)
-        result = table.index.search(key)
-        return [result] if result is not None else []
+        if node.column == table.schema.primary_key:
+            key = self._cast_key(node.value, table, node.column)
+            result = table.index.search(key)
+            return [result] if result is not None else []
+        # Sequential scan: sin indice en la columna
+        field = table.schema.get_field(node.column)
+        key = self._cast_value(node.value, field)
+        return [r for r in self._scan_all_records(table) if r.get(node.column) == key]
 
     def _exec_select_comparison(self, node: SelectComparisonNode) -> list:
-        """Busqueda por comparacion simple usando range_search y filtro final."""
+        """Busqueda por comparacion. Usa indice secundario, index primario o sequential scan."""
         from ..storage.schema import FieldType
 
         table = self.db.get_table(node.table_name)
         field = table.schema.get_field(node.column)
         key = self._cast_value(node.value, field)
-        target_index = table.index
 
+        # Intenta usar un indice secundario o el primario
+        target_index = None
         for secondary_entry in table.secondary_indexes.values():
-            if secondary_entry["type"] != "rtree" and secondary_entry["columns"] == [node.column]:
+            if secondary_entry["columns"] == [node.column]:
                 target_index = secondary_entry["index"]
                 break
+        if target_index is None and node.column == table.schema.primary_key:
+            target_index = table.index
 
-        if field.field_type == FieldType.INT:
-            begin = -2147483648
-            end = 2147483647
-        elif field.field_type == FieldType.FLOAT:
-            begin = float("-inf")
-            end = float("inf")
-        elif field.field_type == FieldType.BOOL:
-            begin = False
-            end = True
-        else:
-            begin = ""
-            end = chr(127) * field.size
+        if target_index is not None:
+            if field.field_type == FieldType.INT:
+                begin, end = -2147483648, 2147483647
+            elif field.field_type == FieldType.FLOAT:
+                begin, end = float("-inf"), float("inf")
+            elif field.field_type == FieldType.BOOL:
+                begin, end = False, True
+            else:
+                begin, end = "", chr(127) * field.size
 
-        if node.operator in ("<", "<="):
-            results = target_index.range_search(begin, key)
+            if node.operator in ("<", "<="):
+                results = target_index.range_search(begin, key)
+            else:
+                results = target_index.range_search(key, end)
+
             if target_index is not table.index:
-                resolved = [
+                results = [
                     self.db.resolve_primary_key(table, ref[table.schema.primary_key])
                     for ref in results if ref is not None
                 ]
-                if node.operator == "<":
-                    return [record for record in resolved if record[node.column] < key]
-                return [record for record in resolved if record[node.column] <= key]
 
-            if node.operator == "<":
-                return [record for record in results if record[node.column] < key]
-            return [record for record in results if record[node.column] <= key]
+            ops = {"<": lambda v: v < key, "<=": lambda v: v <= key,
+                   ">": lambda v: v > key, ">=": lambda v: v >= key}
+            fn = ops.get(node.operator)
+            if fn is None:
+                raise ExecutionError(f"Operador de comparacion no soportado: '{node.operator}'")
+            return [r for r in results if fn(r[node.column])]
 
-        if node.operator in (">", ">="):
-            results = target_index.range_search(key, end)
-            if target_index is not table.index:
-                resolved = [
-                    self.db.resolve_primary_key(table, ref[table.schema.primary_key])
-                    for ref in results if ref is not None
-                ]
-                if node.operator == ">":
-                    return [record for record in resolved if record[node.column] > key]
-                return [record for record in resolved if record[node.column] >= key]
-
-            if node.operator == ">":
-                return [record for record in results if record[node.column] > key]
-            return [record for record in results if record[node.column] >= key]
-
-        raise ExecutionError(f"Operador de comparacion no soportado: '{node.operator}'")
+        # Sequential scan fallback
+        ops = {"<": lambda v: v < key, "<=": lambda v: v <= key,
+               ">": lambda v: v > key, ">=": lambda v: v >= key}
+        fn = ops.get(node.operator)
+        if fn is None:
+            raise ExecutionError(f"Operador de comparacion no soportado: '{node.operator}'")
+        return [r for r in self._scan_all_records(table) if fn(r.get(node.column))]
 
     def _exec_select_range(self, node: SelectRangeNode) -> list:
-        """Busqueda por rango [begin, end]."""
+        """Busqueda por rango [begin, end]. Usa indice, PK o sequential scan."""
         table = self.db.get_table(node.table_name)
         for secondary_entry in table.secondary_indexes.values():
-            if secondary_entry["type"] != "rtree" and secondary_entry["columns"] == [node.column]:
+            if secondary_entry["columns"] == [node.column]:
                 field = table.schema.get_field(node.column)
                 begin = self._cast_value(node.begin, field)
                 end = self._cast_value(node.end, field)
@@ -231,36 +231,34 @@ class Executor:
                     self.db.resolve_primary_key(table, ref[table.schema.primary_key])
                     for ref in refs if ref is not None
                 ]
-        begin = self._cast_key(node.begin, table, node.column)
-        end = self._cast_key(node.end, table, node.column)
-        return table.index.range_search(begin, end)
+        if node.column == table.schema.primary_key:
+            begin = self._cast_key(node.begin, table, node.column)
+            end = self._cast_key(node.end, table, node.column)
+            return table.index.range_search(begin, end)
+        # Sequential scan fallback
+        field = table.schema.get_field(node.column)
+        begin = self._cast_value(node.begin, field)
+        end = self._cast_value(node.end, field)
+        return [r for r in self._scan_all_records(table) if begin <= r.get(node.column) <= end]
 
     def _exec_select_point_radius(self, node: SelectPointRadiusNode) -> list:
-        """Busqueda espacial por radio. Solo valida para RTree."""
+        """Busqueda espacial por radio. Solo valida para indices espaciales."""
         table = self.db.get_table(node.table_name)
-        for secondary_entry in table.secondary_indexes.values():
-            if secondary_entry["type"] == "rtree":
-                refs = secondary_entry["index"].range_search(node.point, node.radius)
-                return [
-                    self.db.resolve_primary_key(table, ref)
-                    for ref in refs
-                ]
-        raise ExecutionError(f"La tabla '{node.table_name}' no tiene un indice RTree")
+        for spatial_entry in table.spatial_indexes.values():
+            refs = spatial_entry["index"].range_search(node.point, node.radius)
+            return [self.db.resolve_primary_key(table, ref) for ref in refs]
+        raise ExecutionError(f"La tabla '{node.table_name}' no tiene un indice espacial")
 
     def _exec_select_knn(self, node: SelectKNNNode) -> list:
-        """Busqueda de k vecinos mas cercanos. Solo valida para RTree."""
+        """Busqueda de k vecinos mas cercanos. Solo valida para indices espaciales."""
         table = self.db.get_table(node.table_name)
-        for secondary_entry in table.secondary_indexes.values():
-            if secondary_entry["type"] == "rtree":
-                refs = secondary_entry["index"].knn(node.point, node.k)
-                return [
-                    self.db.resolve_primary_key(table, ref)
-                    for ref in refs
-                ]
-        raise ExecutionError(f"La tabla '{node.table_name}' no tiene un indice RTree")
+        for spatial_entry in table.spatial_indexes.values():
+            refs = spatial_entry["index"].knn(node.point, node.k)
+            return [self.db.resolve_primary_key(table, ref) for ref in refs]
+        raise ExecutionError(f"La tabla '{node.table_name}' no tiene un indice espacial")
 
     def _exec_delete(self, node: DeleteNode) -> list:
-        """Elimina el registro con la clave dada."""
+        """Elimina el registro con la clave dada. Soporta PK, indice secundario y sequential scan."""
         table = self.db.get_table(node.table_name)
         record = None
         primary_key_value = None
@@ -271,29 +269,47 @@ class Executor:
             primary_key_value = key
         else:
             for secondary_entry in table.secondary_indexes.values():
-                if secondary_entry["type"] != "rtree" and secondary_entry["columns"] == [node.column]:
+                if secondary_entry["columns"] == [node.column]:
                     field = table.schema.get_field(node.column)
                     sec_key = self._cast_value(node.value, field)
                     ref_record = secondary_entry["index"].search(sec_key)
                     if ref_record is not None:
                         record = self.db.resolve_primary_key(
-                            table,
-                            ref_record[table.schema.primary_key],
+                            table, ref_record[table.schema.primary_key],
                         )
                         if record is not None:
                             primary_key_value = record[table.schema.primary_key]
                     break
+            else:
+                # Sequential scan: no hay indice en la columna
+                field = table.schema.get_field(node.column)
+                sec_key = self._cast_value(node.value, field)
+                for r in self._scan_all_records(table):
+                    if r.get(node.column) == sec_key:
+                        record = r
+                        primary_key_value = r[table.schema.primary_key]
+                        break
 
         if record is None or primary_key_value is None:
             return [{"deleted": False}]
 
         for secondary_entry in table.secondary_indexes.values():
-            if hasattr(secondary_entry["index"], "remove_ref"):
-                secondary_entry["index"].remove_ref(primary_key_value)
-
+            secondary_entry["index"].remove_ref(primary_key_value)
+        for spatial_entry in table.spatial_indexes.values():
+            spatial_entry["index"].remove_ref(primary_key_value)
 
         removed = table.index.remove(primary_key_value)
         return [{"deleted": removed}]
+
+    # ------------------------------------------------------------------
+    # Sequential Scan
+    # ------------------------------------------------------------------
+
+    def _scan_all_records(self, table) -> list[dict]:
+        """Recorre todos los registros del indice primario sin filtro."""
+        if isinstance(table.index, ExtendibleHashing):
+            return table.index.scan_all()
+        return [item["record"] for item in table.index.iter_record_refs()]
 
     # ------------------------------------------------------------------
     # Utilidades de casting

@@ -24,6 +24,7 @@ class Database:
 
     INDEX_TYPES = {"sequential", "hashing", "bplus", "rtree"}
     PRIMARY_INDEX_TYPES = {"sequential", "hashing", "bplus"}
+    SPATIAL_INDEX_TYPES = {"rtree"}
 
     def __init__(self):
         self._tables: dict[str, Table] = {}
@@ -80,7 +81,8 @@ class Database:
 
     def add_secondary_index(self, table_name: str, index_name: str, columns: list, index_type: str) -> None:
         table = self.get_table(table_name)
-        if index_name in table.secondary_indexes:
+        all_index_names = set(table.secondary_indexes) | set(table.spatial_indexes)
+        if index_name in all_index_names:
             raise ValueError(f"Ya existe un indice llamado '{index_name}' en '{table_name}'")
         if index_type not in self.INDEX_TYPES:
             raise ValueError(f"index_type '{index_type}' no valido")
@@ -91,38 +93,36 @@ class Database:
                 raise ValueError(f"Columna '{column}' no existe en '{table_name}'")
 
         pk_field = table.schema.get_field(table.schema.primary_key)
-        if index_type == "rtree":
-            if len(columns) != 2:
-                raise ValueError("RTree requiere exactamente dos columnas")
-            sec_schema = Schema(table.schema.fields, table.schema.primary_key)
-        else:
-            if len(columns) != 1:
-                raise ValueError("Los indices escalares requieren exactamente una columna")
-            key_field = table.schema.get_field(columns[0])
-            sec_schema = Schema([key_field, pk_field], primary_key=columns[0])
-
-        sec_index = self._build_index(table_name, index_name, sec_schema, index_type, columns, secondary=True)
         entry = {
-            "index": sec_index,
+            "index": None,
             "type": index_type,
             "columns": columns,
             "rel_oid": self._allocate_oid(),
             "storage_name": index_name,
         }
-        table.secondary_indexes[index_name] = entry
 
-        if index_type == "rtree":
-            self._populate_rtree_secondary_index(table, entry)
+        if index_type in self.SPATIAL_INDEX_TYPES:
+            sp_schema = Schema(table.schema.fields, table.schema.primary_key)
+            entry["index"] = self._build_index(table_name, index_name, sp_schema, index_type, columns, secondary=True)
+            table.spatial_indexes[index_name] = entry
+            self._populate_spatial_index(table, entry)
         else:
+            key_field = table.schema.get_field(columns[0])
+            sec_schema = Schema([key_field, pk_field], primary_key=columns[0])
+            entry["index"] = self._build_index(table_name, index_name, sec_schema, index_type, columns, secondary=True)
+            table.secondary_indexes[index_name] = entry
             self._populate_secondary_index(table, entry)
+
         self._save_catalogs()
 
     def drop_secondary_index(self, table_name: str, index_name: str) -> None:
         table = self.get_table(table_name)
-        if index_name not in table.secondary_indexes:
+        if index_name in table.secondary_indexes:
+            del table.secondary_indexes[index_name]
+        elif index_name in table.spatial_indexes:
+            del table.spatial_indexes[index_name]
+        else:
             raise KeyError(f"Indice '{index_name}' no existe en '{table_name}'")
-
-        del table.secondary_indexes[index_name]
         self._delete_index_files(table_name, index_name)
         self._save_catalogs()
 
@@ -204,7 +204,7 @@ class Database:
             return ExtendibleHashing(schema, pm, dir_pm, stats)
 
         if index_type == "bplus":
-            return BPlusTree(schema, pm, stats)
+            return BPlusTree(schema, pm, stats, clustered=not secondary)
 
         if index_type == "rtree":
             if index_columns is None or len(index_columns) != 2:
@@ -225,8 +225,8 @@ class Database:
             except DuplicateKeyError:
                 pass
 
-    def _populate_rtree_secondary_index(self, table: Table, secondary_entry: dict) -> None:
-        lat_column, lon_column = secondary_entry["columns"]
+    def _populate_spatial_index(self, table: Table, spatial_entry: dict) -> None:
+        lat_column, lon_column = spatial_entry["columns"]
         refs = []
         for item in table.index.iter_record_refs():
             record = item["record"]
@@ -237,7 +237,7 @@ class Database:
                     "pk": record[table.schema.primary_key],
                 }
             )
-        secondary_entry["index"].build_from_refs(refs)
+        spatial_entry["index"].build_from_refs(refs)
 
     def resolve_primary_key(self, table: Table, primary_key_value) -> dict:
         return table.index.search(primary_key_value)
@@ -249,12 +249,27 @@ class Database:
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"CSV no encontrado: {filepath}")
 
+        from ..indexes.base_index import DuplicateKeyError
         count = 0
         with open(filepath, newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
                 record = self._cast_row(row, table.schema)
                 table.index.add(record)
+                pk_value = record[table.schema.primary_key]
+                for sec_entry in table.secondary_indexes.values():
+                    try:
+                        col = sec_entry["columns"][0]
+                        sec_entry["index"].add_ref(record[col], pk_value)
+                    except DuplicateKeyError:
+                        pass
+                for sp_entry in table.spatial_indexes.values():
+                    lat_col, lon_col = sp_entry["columns"]
+                    sp_entry["index"].add_ref(
+                        float(record[lat_col]),
+                        float(record[lon_col]),
+                        pk_value,
+                    )
                 count += 1
         return count
 
@@ -359,30 +374,47 @@ class Database:
                         table_name,
                         index_class["rel_file_node"],
                     )
-                    if index_entry["ind_class"] == "rtree":
-                        sec_schema = Schema(schema.fields, schema.primary_key)
+                    is_spatial = (
+                        index_entry.get("ind_is_spatial", False)
+                        or index_entry["ind_class"] in self.SPATIAL_INDEX_TYPES
+                    )
+                    if is_spatial:
+                        sp_schema = Schema(schema.fields, schema.primary_key)
+                        sp_index = self._build_index(
+                            table_name, storage_name, sp_schema,
+                            index_entry["ind_class"], columns,
+                        )
+                        table.spatial_indexes[index_class["rel_name"]] = {
+                            "index": sp_index,
+                            "type": index_entry["ind_class"],
+                            "columns": columns,
+                            "rel_oid": index_class["oid"],
+                            "storage_name": storage_name,
+                        }
                     else:
                         sec_schema = Schema(
                             [schema.get_field(columns[0]), schema.get_field(schema.primary_key)],
                             primary_key=columns[0],
                         )
-                    sec_index = self._build_index(
-                        table_name,
-                        storage_name,
-                        sec_schema,
-                        index_entry["ind_class"],
-                        columns,
-                    )
-                    table.secondary_indexes[index_class["rel_name"]] = {
-                        "index": sec_index,
-                        "type": index_entry["ind_class"],
-                        "columns": columns,
-                        "rel_oid": index_class["oid"],
-                        "storage_name": storage_name,
-                    }
+                        sec_index = self._build_index(
+                            table_name, storage_name, sec_schema,
+                            index_entry["ind_class"], columns,
+                        )
+                        table.secondary_indexes[index_class["rel_name"]] = {
+                            "index": sec_index,
+                            "type": index_entry["ind_class"],
+                            "columns": columns,
+                            "rel_oid": index_class["oid"],
+                            "storage_name": storage_name,
+                        }
 
                 self._tables[table_name] = table
-            except Exception:
+            except Exception as exc:
+                import warnings
+                warnings.warn(
+                    f"[catalog] No se pudo cargar la tabla '{table_entry.get('rel_name', '?')}': {exc}",
+                    stacklevel=2,
+                )
                 continue
 
     def _save_catalogs(self) -> None:
@@ -483,6 +515,35 @@ class Database:
                         "ind_rel_id": table.rel_oid,
                         "ind_is_primary": False,
                         "ind_is_unique": False,
+                        "ind_is_spatial": False,
+                        "ind_key": [column_number_by_name[column] for column in meta["columns"]],
+                        "ind_class": meta["type"],
+                    }
+                )
+
+            for index_name, meta in sorted(table.spatial_indexes.items()):
+                if meta.get("rel_oid") is None:
+                    meta["rel_oid"] = self._allocate_oid()
+                if meta.get("storage_name") is None:
+                    meta["storage_name"] = index_name
+
+                pg_class.append(
+                    {
+                        "oid": meta["rel_oid"],
+                        "rel_name": index_name,
+                        "rel_kind": "index",
+                        "rel_natts": len(meta["columns"]),
+                        "rel_am": meta["type"],
+                        "rel_file_node": self._index_file_node(table.name, meta["storage_name"]),
+                    }
+                )
+                pg_index.append(
+                    {
+                        "index_rel_id": meta["rel_oid"],
+                        "ind_rel_id": table.rel_oid,
+                        "ind_is_primary": False,
+                        "ind_is_unique": False,
+                        "ind_is_spatial": True,
                         "ind_key": [column_number_by_name[column] for column in meta["columns"]],
                         "ind_class": meta["type"],
                     }

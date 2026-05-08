@@ -4,6 +4,7 @@ from enum import Enum, auto
 class TokenType(Enum):
     # Palabras clave
     CREATE = auto(); TABLE = auto(); FROM = auto(); FILE = auto()
+    IMPORT = auto()
     DROP = auto()
     SELECT = auto(); WHERE = auto()
     INSERT = auto(); INTO = auto(); VALUES = auto()
@@ -51,6 +52,7 @@ class Token:
 _KEYWORDS: dict[str, TokenType] = {
     "CREATE": TokenType.CREATE, "TABLE": TokenType.TABLE,
     "DROP": TokenType.DROP,
+    "IMPORT": TokenType.IMPORT,
     "FROM": TokenType.FROM, "FILE": TokenType.FILE,
     "SELECT": TokenType.SELECT, "WHERE": TokenType.WHERE,
     "BETWEEN": TokenType.BETWEEN, "AND": TokenType.AND,

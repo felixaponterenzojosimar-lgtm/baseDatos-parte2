@@ -1,3 +1,12 @@
+export interface SpatialMeta {
+  type: "radius" | "knn";
+  point: [number, number];
+  radius?: number;
+  k?: number;
+  lat_col: string | null;
+  lon_col: string | null;
+}
+
 export interface QueryResult {
   columns: string[];
   rows: Record<string, unknown>[];
@@ -6,6 +15,7 @@ export interface QueryResult {
   writes: number;
   time_ms: number;
   message: string | null;
+  spatial_meta?: SpatialMeta | null;
 }
 
 export interface ColumnSchema {
@@ -13,12 +23,20 @@ export interface ColumnSchema {
   type: string;
 }
 
+export interface IndexInfo {
+  name: string;
+  type: string;
+  columns: string[];
+}
+
 export interface TableInfo {
   name: string;
   columns: ColumnSchema[];
-  index_type: "sequential" | "isam" | "bplus" | "hash" | "rtree" | "hashing";
+  primary_key: string;
+  primary_index_type: string;
   data_file: string;
-  secondary_indexes: Record<string, string>;
+  secondary_indexes: IndexInfo[];
+  spatial_indexes: IndexInfo[];
 }
 
 export interface TableListResponse {

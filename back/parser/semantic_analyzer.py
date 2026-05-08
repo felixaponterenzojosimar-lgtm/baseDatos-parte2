@@ -8,6 +8,7 @@ from .ast_nodes import (
     DeleteNode,
     DropIndexNode,
     DropTableNode,
+    ImportFileNode,
     InsertNode,
     SelectAllNode,
     SelectComparisonNode,
@@ -28,9 +29,9 @@ class SemanticAnalyzer:
     Verifica que el AST generado por el análisis sintáctico cumpla las reglas semánticas del proyecto.
     """
 
-    def __init__(self):
+    def __init__(self, db: Database | None = None):
         self.error_message = ""
-        self.db = Database()
+        self.db = db if db is not None else Database()
 
 
     # ------------------------------------------------------------------------------
@@ -38,7 +39,6 @@ class SemanticAnalyzer:
     # ------------------------------------------------------------------------------
     def validate(self, node) -> bool:
         self.error_message = ""
-        self.db = Database()
 
         if isinstance(node, CreateTableNode):
             return self.validate_create_table_node(node)
@@ -86,7 +86,11 @@ class SemanticAnalyzer:
         # Verifica el nodo de tipo SELECT KNN.
         if isinstance(node, SelectKNNNode):
             return self.validate_select_knn_node(node)
-        
+
+        # Verifica el nodo de tipo IMPORT FILE.
+        if isinstance(node, ImportFileNode):
+            return self.validate_import_file_node(node)
+
         self.error_message = f"No existe verificacion semantica para el nodo {type(node).__name__}"
         return False
 
@@ -159,7 +163,8 @@ class SemanticAnalyzer:
 
         # Verifica que no exista un indice con el mismo nombre en la tabla.
         table = self.db.get_table(node.table_name)
-        if node.index_name in table.secondary_indexes:
+        all_index_names = set(table.secondary_indexes) | set(table.spatial_indexes)
+        if node.index_name in all_index_names:
             self.error_message = f"Ya existe un indice llamado '{node.index_name}' en '{node.table_name}'"
             return False
 
@@ -241,9 +246,10 @@ class SemanticAnalyzer:
             self.error_message = f"La tabla '{node.table_name}' no existe"
             return False
 
-        # Verifica que el índice exista en la tabla.
+        # Verifica que el índice exista en la tabla (secundario o espacial).
         table = self.db.get_table(node.table_name)
-        if node.index_name not in table.secondary_indexes:
+        all_index_names = set(table.secondary_indexes) | set(table.spatial_indexes)
+        if node.index_name not in all_index_names:
             self.error_message = f"Indice '{node.index_name}' no existe en '{node.table_name}'"
             return False
         
@@ -371,6 +377,21 @@ class SemanticAnalyzer:
 
         return True
 
+    # Verifica que un nodo de tipo IMPORT FILE cumpla las reglas semanticas del proyecto.
+    def validate_import_file_node(self, node: ImportFileNode) -> bool:
+
+        # Verifica que la tabla destino exista.
+        if not self.table_exists(node.table_name):
+            self.error_message = f"La tabla '{node.table_name}' no existe"
+            return False
+
+        # Verifica que la ruta del archivo no esté vacía.
+        if not node.filepath or node.filepath.strip() == "":
+            self.error_message = "IMPORT FILE debe recibir una ruta no vacia"
+            return False
+
+        return True
+
     # Verifica que un nodo de tipo DELETE cumpla las reglas semanticas del proyecto.
     def validate_delete_node(self, node: DeleteNode) -> bool:
         
@@ -405,14 +426,14 @@ class SemanticAnalyzer:
             return False
         return True
 
-    # Verifica la tabla exista y tenga un índice RTree para búsqueda espacial.
+    # Verifica que la tabla exista y tenga un índice espacial para búsqueda espacial.
     def validate_spatial_lookup(self, table_name: str) -> bool:
         if not self.table_exists(table_name):
             self.error_message = f"La tabla '{table_name}' no existe"
             return False
         table = self.db.get_table(table_name)
-        if not any(meta["type"] == "rtree" for meta in table.secondary_indexes.values()):
-            self.error_message = f"La tabla '{table_name}' no tiene un indice RTree"
+        if not table.spatial_indexes:
+            self.error_message = f"La tabla '{table_name}' no tiene un indice espacial"
             return False
         return True
 

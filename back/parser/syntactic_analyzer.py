@@ -3,6 +3,7 @@ from .ast_nodes import (
     CreateTableNode, CreateIndexNode, DateLiteralNode, TimeLiteralNode, InsertNode,
     SelectAllNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,
     SelectPointRadiusNode, SelectKNNNode, DeleteNode, DropTableNode, DropIndexNode,
+    ImportFileNode,
 )
 
 
@@ -38,6 +39,8 @@ class SyntacticAnalyzer:
             node = self.parse_select()
         elif tok.type == TokenType.DELETE:
             node = self.parse_delete()
+        elif tok.type == TokenType.IMPORT:
+            node = self.parse_import_file()
         else:
             raise SyntacticError(f"Sentencia desconocida: '{tok.value}' en línea {tok.line}")
         self.expect(TokenType.SEMICOLON)
@@ -212,6 +215,14 @@ class SyntacticAnalyzer:
         raise SyntacticError(
             f"Operador WHERE desconocido: '{tok.value}' en línea {tok.line}"
         )
+
+    def parse_import_file(self) -> ImportFileNode:
+        self.expect(TokenType.IMPORT)
+        self.expect(TokenType.FILE)
+        filepath = self.expect(TokenType.STRING_LITERAL).value
+        self.expect(TokenType.INTO)
+        table_name = self.expect(TokenType.IDENTIFIER).value
+        return ImportFileNode(table_name, filepath)
 
     def parse_delete(self) -> DeleteNode:
         self.expect(TokenType.DELETE)

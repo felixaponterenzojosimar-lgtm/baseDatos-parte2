@@ -46,15 +46,21 @@ export default function App() {
   }
 
   async function runQuery() {
-    await execute(sql);
+    const res = await execute(sql);
     await refresh();
-    setActiveTab("results");
+    if (res?.spatial_meta) {
+      const match = sql.match(/\bFROM\s+(\w+)\b/i);
+      if (match) setRtreeTable(match[1]);
+      setActiveTab("rtree");
+    } else {
+      setActiveTab("results");
+    }
   }
 
   function handleSelectTable(t: TableInfo) {
     setSelectedTable(t.name);
     setSql(`SELECT * FROM ${t.name};`);
-    if (t.index_type === "rtree") {
+    if (t.spatial_indexes?.length > 0) {
       setRtreeTable(t.name);
     }
     setActiveTab("results");
@@ -187,8 +193,12 @@ export default function App() {
               )}
               {activeTab === "rtree" && (
                 rtreeTable
-                  ? <RTreeVisualization table={rtreeTable} />
-                  : <p className="p-8 text-center text-slate-500 text-sm">Select an R-Tree table from the sidebar and click Visualize.</p>
+                  ? <RTreeVisualization
+                      table={rtreeTable}
+                      queryRows={result?.spatial_meta ? result.rows : null}
+                      spatialMeta={result?.spatial_meta}
+                    />
+                  : <p className="p-8 text-center text-slate-500 text-sm">Select a spatial table from the sidebar and click Visualize.</p>
               )}
               {activeTab === "history" && <MetricsHistory />}
               {activeTab === "concurrency" && <ConcurrencySimulator />}
