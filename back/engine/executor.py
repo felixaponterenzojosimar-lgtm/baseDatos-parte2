@@ -5,7 +5,7 @@ from ..indexes.base_index import DuplicateKeyError
 from ..parser.ast_nodes import (
     CreateTableNode, CreateIndexNode, InsertNode, SelectAllNode, SelectEqualNode,
     SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
-    DropTableNode, DropIndexNode, ImportFileNode,
+    DropTableNode, DropIndexNode, ImportFileNode, TextSearchNode, MediaSearchNode,
 )
 
 
@@ -48,6 +48,8 @@ class Executor:
             SelectRangeNode:       self._exec_select_range,
             SelectPointRadiusNode: self._exec_select_point_radius,
             SelectKNNNode:         self._exec_select_knn,
+            TextSearchNode:        self._exec_text_search,
+            MediaSearchNode:       self._exec_media_search,
             DeleteNode:            self._exec_delete,
         }
         handler = dispatch.get(type(node))
@@ -256,6 +258,46 @@ class Executor:
             refs = spatial_entry["index"].knn(node.point, node.k)
             return [self.db.resolve_primary_key(table, ref) for ref in refs]
         raise ExecutionError(f"La tabla '{node.table_name}' no tiene un indice espacial")
+
+    # ------------------------------------------------------------------
+    # Recuperacion por contenido (Proyecto 2) -- puntos de integracion
+    # ------------------------------------------------------------------
+
+    def _exec_text_search(self, node: TextSearchNode) -> list:
+        """Recuperacion de texto por similitud de coseno (operador @@).
+
+        Flujo previsto (ver back/retrieval/text/):
+          1. localizar el indice INVERTED de la columna en table.content_indexes
+          2. tokenizar node.query_text con el mismo pipeline del indice (tokenizer)
+          3. si node.method == 'sequential' -> cosine_ranker sobre scan completo;
+             si no -> text_retriever sobre el indice invertido (SPIMI en disco)
+          4. devolver los top-k registros (node.k) resueltos por clave primaria
+
+        Pendiente de implementacion: el subsistema back/retrieval/text esta
+        definido como estructura; este handler es el punto de conexion.
+        """
+        raise ExecutionError(
+            "Busqueda textual @@ aun no implementada: conectar back/retrieval/text "
+            "(tokenizer -> spimi/inverted_index -> cosine_ranker -> text_retriever)"
+        )
+
+    def _exec_media_search(self, node: MediaSearchNode) -> list:
+        """Recuperacion multimedia por KNN sobre histogramas Bag of Words (operador <->).
+
+        Flujo previsto (ver back/retrieval/media/):
+          1. extraer descriptores locales de node.query_path (SIFT imagen / MFCC audio)
+          2. cuantizar contra el vocabulario (codebook) -> histograma BoVW/BoAW
+          3. si node.method == 'sequential' -> sequential_search (fuerza bruta);
+             si no -> histogram_index (KNN indexado con indice invertido de codewords)
+          4. devolver los top-k registros (node.k) resueltos por clave primaria
+
+        Pendiente de implementacion: el subsistema back/retrieval/media esta
+        definido como estructura; este handler es el punto de conexion.
+        """
+        raise ExecutionError(
+            "Busqueda multimedia <-> aun no implementada: conectar back/retrieval/media "
+            "(extractor -> vocabulary -> histogram -> sequential_search/histogram_index)"
+        )
 
     def _exec_delete(self, node: DeleteNode) -> list:
         """Elimina el registro con la clave dada. Soporta PK, indice secundario y sequential scan."""

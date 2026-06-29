@@ -91,6 +91,36 @@ class SelectKNNNode:
         self.k = k
 
 
+class TextSearchNode:
+    """SELECT * FROM tabla WHERE col @@ 'consulta' LIMIT k [USING metodo]
+
+    Recuperacion de texto por similitud de coseno sobre el indice invertido.
+    method: None (auto, usa indice si existe) | 'sequential' (scan + coseno) | 'inverted'.
+    """
+
+    def __init__(self, table_name: str, column: str, query_text: str, k: int, method: str = None):
+        self.table_name = table_name
+        self.column = column
+        self.query_text = query_text
+        self.k = k
+        self.method = method
+
+
+class MediaSearchNode:
+    """SELECT * FROM tabla WHERE col <-> 'ruta_consulta' LIMIT k [USING metodo]
+
+    Recuperacion multimedia (imagen/audio) por KNN sobre histogramas Bag of Words.
+    method: None (auto) | 'sequential' (KNN secuencial) | 'multimedia' (KNN indexado).
+    """
+
+    def __init__(self, table_name: str, column: str, query_path: str, k: int, method: str = None):
+        self.table_name = table_name
+        self.column = column
+        self.query_path = query_path
+        self.k = k
+        self.method = method
+
+
 class DeleteNode:
     """DELETE FROM tabla WHERE col = valor"""
 

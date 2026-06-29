@@ -20,6 +20,14 @@ class TokenType(Enum):
     BIGINT = auto(); REAL = auto(); DOUBLE = auto()
     PRECISION = auto(); BOOLEAN = auto(); CHAR = auto()
     DATE = auto(); TIME = auto()
+    # Tipos de datos de contenido (Proyecto 2: recuperacion por contenido)
+    TEXT_TYPE = auto(); IMAGE_TYPE = auto(); AUDIO_TYPE = auto()
+    # Indices de recuperacion por contenido
+    INVERTED = auto(); MULTIMEDIA = auto()
+    # Recuperacion: top-k y operadores de similitud
+    LIMIT = auto()
+    MATCH = auto()   # @@  -> busqueda textual rankeada por coseno
+    SIM = auto()     # <-> -> similitud / KNN multimedia por ejemplo
     # Literales
     IDENTIFIER = auto()
     INTEGER_LITERAL = auto()
@@ -72,6 +80,10 @@ _KEYWORDS: dict[str, TokenType] = {
     "PRECISION": TokenType.PRECISION, "BOOLEAN": TokenType.BOOLEAN,
     "CHAR": TokenType.CHAR, "DATE": TokenType.DATE,
     "TIME": TokenType.TIME,
+    "TEXT": TokenType.TEXT_TYPE, "IMAGE": TokenType.IMAGE_TYPE,
+    "AUDIO": TokenType.AUDIO_TYPE,
+    "INVERTED": TokenType.INVERTED, "MULTIMEDIA": TokenType.MULTIMEDIA,
+    "LIMIT": TokenType.LIMIT,
     "TRUE": TokenType.TRUE_LITERAL, "FALSE": TokenType.FALSE_LITERAL,
 }
 
@@ -141,7 +153,7 @@ class LexicalAnalyzer:
                 tokens.append(self.read_identifier_or_keyword())
                 continue
 
-            if ch in "<>=*":
+            if ch in "<>=*@":
                 tokens.append(self.read_operator())
                 continue
 
@@ -210,6 +222,20 @@ class LexicalAnalyzer:
 
     def read_operator(self) -> Token:
         ch = self.sql[self.pos]
+
+        # Operador de similitud multimedia: <-> (tres caracteres). Se reconoce
+        # antes que '<' o '<=' para no confundirlo con una comparacion.
+        if ch == "<" and self.peek(self.pos + 1) == "-" and self.peek(self.pos + 2) == ">":
+            self.pos += 3
+            return Token(TokenType.SIM, "<->", self.line)
+
+        # Operador de match textual: @@ (dos caracteres).
+        if ch == "@":
+            if self.peek(self.pos + 1) == "@":
+                self.pos += 2
+                return Token(TokenType.MATCH, "@@", self.line)
+            raise LexError(f"Se esperaba '@@' en línea {self.line}")
+
         next_char = self.peek(self.pos + 1)
 
         if next_char is not None:
@@ -252,4 +278,4 @@ class LexicalAnalyzer:
         return self.sql[position]
 
     def _is_special_character(self, ch: str) -> bool:
-        return ch in "(),;=*'-.<>"
+        return ch in "(),;=*'-.<>@"

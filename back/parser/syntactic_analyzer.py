@@ -3,7 +3,7 @@ from .ast_nodes import (
     CreateTableNode, CreateIndexNode, DateLiteralNode, TimeLiteralNode, InsertNode,
     SelectAllNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,
     SelectPointRadiusNode, SelectKNNNode, DeleteNode, DropTableNode, DropIndexNode,
-    ImportFileNode,
+    ImportFileNode, TextSearchNode, MediaSearchNode,
 )
 
 
@@ -160,6 +160,22 @@ class SyntacticAnalyzer:
 
         tok = self.peek()
 
+        # Recuperacion de texto por coseno:  col @@ 'consulta' LIMIT k [USING metodo]
+        if tok.type == TokenType.MATCH:
+            self.advance()
+            query_text = self.expect(TokenType.STRING_LITERAL).value
+            k = self.read_limit()
+            method = self.read_retrieval_method()
+            return TextSearchNode(table_name, col, query_text, k, method)
+
+        # Recuperacion multimedia por KNN:  col <-> 'ruta' LIMIT k [USING metodo]
+        if tok.type == TokenType.SIM:
+            self.advance()
+            query_path = self.expect(TokenType.STRING_LITERAL).value
+            k = self.read_limit()
+            method = self.read_retrieval_method()
+            return MediaSearchNode(table_name, col, query_path, k, method)
+
         if tok.type == TokenType.EQUAL:
             self.advance()
             value = self.read_literal()
@@ -234,6 +250,35 @@ class SyntacticAnalyzer:
         value = self.read_literal()
         return DeleteNode(table_name, col, value)
 
+    def read_limit(self) -> int:
+        """Lee la clausula obligatoria LIMIT k de las consultas de recuperacion."""
+        self.expect(TokenType.LIMIT)
+        return self.expect(TokenType.INTEGER_LITERAL).value
+
+    def read_retrieval_method(self):
+        """Lee la clausula opcional USING <metodo> para forzar el motor en experimentos.
+
+        Texto:      USING SEQUENTIAL | USING INVERTED
+        Multimedia: USING SEQUENTIAL | USING MULTIMEDIA
+        """
+        if self.peek().type != TokenType.USING:
+            return None
+        self.advance()
+        tok = self.peek()
+        if tok.type == TokenType.SEQUENTIAL:
+            self.advance()
+            return "sequential"
+        if tok.type == TokenType.INVERTED:
+            self.advance()
+            return "inverted"
+        if tok.type == TokenType.MULTIMEDIA:
+            self.advance()
+            return "multimedia"
+        raise SyntacticError(
+            f"USING en una consulta solo permite SEQUENTIAL, INVERTED o MULTIMEDIA; "
+            f"se obtuvo '{tok.value}' en línea {tok.line}"
+        )
+
     def read_literal(self):
         tok = self.peek()
         if tok.type in (TokenType.INTEGER_LITERAL, TokenType.FLOAT_LITERAL, TokenType.STRING_LITERAL):
@@ -291,6 +336,15 @@ class SyntacticAnalyzer:
         if tok.type == TokenType.TIME:
             self.advance()
             return "TIME"
+        if tok.type == TokenType.TEXT_TYPE:
+            self.advance()
+            return "TEXT"
+        if tok.type == TokenType.IMAGE_TYPE:
+            self.advance()
+            return "IMAGE"
+        if tok.type == TokenType.AUDIO_TYPE:
+            self.advance()
+            return "AUDIO"
         raise SyntacticError(
             f"Se esperaba un tipo de dato, se obtuvo '{tok.value}' "
             f"({tok.type.name}) en línea {tok.line}"
@@ -313,6 +367,12 @@ class SyntacticAnalyzer:
             self.advance()
             self.expect(TokenType.FILE)
             return "sequential"
+        if tok.type == TokenType.INVERTED:
+            self.advance()
+            return "inverted"
+        if tok.type == TokenType.MULTIMEDIA:
+            self.advance()
+            return "multimedia"
         raise SyntacticError(
             f"Se esperaba una técnica de índice válida, se obtuvo '{tok.value}' "
             f"({tok.type.name}) en línea {tok.line}"

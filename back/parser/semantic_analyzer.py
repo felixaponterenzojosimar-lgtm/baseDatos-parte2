@@ -17,7 +17,14 @@ from .ast_nodes import (
     SelectPointRadiusNode,
     SelectRangeNode,
     TimeLiteralNode,
+    TextSearchNode,
+    MediaSearchNode,
 )
+
+# Tipos de columna de contenido y los indices de recuperacion que admiten.
+_CONTENT_TYPES = {"TEXT", "IMAGE", "AUDIO"}
+_TEXT_TYPES = {"TEXT"}
+_MEDIA_TYPES = {"IMAGE", "AUDIO"}
 
 
 class SemanticError(Exception):
@@ -90,6 +97,14 @@ class SemanticAnalyzer:
         # Verifica el nodo de tipo IMPORT FILE.
         if isinstance(node, ImportFileNode):
             return self.validate_import_file_node(node)
+
+        # Verifica el nodo de busqueda textual por coseno (@@).
+        if isinstance(node, TextSearchNode):
+            return self.validate_text_search_node(node)
+
+        # Verifica el nodo de busqueda multimedia por KNN (<->).
+        if isinstance(node, MediaSearchNode):
+            return self.validate_media_search_node(node)
 
         self.error_message = f"No existe verificacion semantica para el nodo {type(node).__name__}"
         return False
@@ -178,6 +193,21 @@ class SemanticAnalyzer:
             if not self.column_exists(table, column):
                 self.error_message = f"Columna '{column}' no existe en '{node.table_name}'"
                 return False
+
+        # Indices de recuperacion por contenido: el tipo de indice debe calzar con
+        # el tipo de la columna (INVERTED -> TEXT, MULTIMEDIA -> IMAGE/AUDIO).
+        if node.index_type in ("inverted", "multimedia"):
+            if len(node.columns) != 1:
+                self.error_message = "Un indice de recuperacion por contenido usa exactamente una columna"
+                return False
+            declared = self.get_declared_column_type(table, node.columns[0])
+            if node.index_type == "inverted" and declared not in _TEXT_TYPES:
+                self.error_message = "USING INVERTED requiere una columna de tipo TEXT"
+                return False
+            if node.index_type == "multimedia" and declared not in _MEDIA_TYPES:
+                self.error_message = "USING MULTIMEDIA requiere una columna IMAGE o AUDIO"
+                return False
+            return True
 
         # Verifica que el tipo de índice sea válido y que la cantidad de columnas sea compatible con el tipo.
         if node.index_type == "rtree":
@@ -409,6 +439,54 @@ class SemanticAnalyzer:
             self.error_message = (f"El valor '{self.literal_value(node.value)}' no es compatible con la columna '{node.column}'")
             return False
         
+        return True
+
+    # Verifica que un nodo de busqueda textual por coseno (@@) sea valido.
+    def validate_text_search_node(self, node: TextSearchNode) -> bool:
+        if not self.validate_scalar_lookup(node.table_name, node.column):
+            return False
+
+        table = self.db.get_table(node.table_name)
+        declared_type = self.get_declared_column_type(table, node.column)
+        if declared_type not in _TEXT_TYPES:
+            self.error_message = (
+                f"El operador @@ requiere una columna TEXT; "
+                f"'{node.column}' es de tipo {declared_type}"
+            )
+            return False
+
+        if type(node.k) is not int or node.k <= 0:
+            self.error_message = "LIMIT debe ser un entero positivo"
+            return False
+
+        if not node.query_text or node.query_text.strip() == "":
+            self.error_message = "La consulta textual no puede estar vacia"
+            return False
+
+        return True
+
+    # Verifica que un nodo de busqueda multimedia por KNN (<->) sea valido.
+    def validate_media_search_node(self, node: MediaSearchNode) -> bool:
+        if not self.validate_scalar_lookup(node.table_name, node.column):
+            return False
+
+        table = self.db.get_table(node.table_name)
+        declared_type = self.get_declared_column_type(table, node.column)
+        if declared_type not in _MEDIA_TYPES:
+            self.error_message = (
+                f"El operador <-> requiere una columna IMAGE o AUDIO; "
+                f"'{node.column}' es de tipo {declared_type}"
+            )
+            return False
+
+        if type(node.k) is not int or node.k <= 0:
+            self.error_message = "LIMIT debe ser un entero positivo"
+            return False
+
+        if not node.query_path or node.query_path.strip() == "":
+            self.error_message = "La ruta de consulta multimedia no puede estar vacia"
+            return False
+
         return True
 
     # ------------------------------------------------------------------------------
