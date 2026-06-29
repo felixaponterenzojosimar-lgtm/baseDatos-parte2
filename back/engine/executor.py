@@ -83,6 +83,11 @@ class Executor:
         return []
 
     def _exec_create_index(self, node: CreateIndexNode) -> list:
+        if node.index_type in self.db.CONTENT_INDEX_TYPES:
+            summary = self.db.add_content_index(
+                node.table_name, node.index_name, node.columns, node.index_type
+            )
+            return [summary]
         self.db.add_secondary_index(node.table_name, node.index_name, node.columns, node.index_type)
         return []
 
@@ -264,40 +269,56 @@ class Executor:
     # ------------------------------------------------------------------
 
     def _exec_text_search(self, node: TextSearchNode) -> list:
-        """Recuperacion de texto por similitud de coseno (operador @@).
-
-        Flujo previsto (ver back/retrieval/text/):
-          1. localizar el indice INVERTED de la columna en table.content_indexes
-          2. tokenizar node.query_text con el mismo pipeline del indice (tokenizer)
-          3. si node.method == 'sequential' -> cosine_ranker sobre scan completo;
-             si no -> text_retriever sobre el indice invertido (SPIMI en disco)
-          4. devolver los top-k registros (node.k) resueltos por clave primaria
-
-        Pendiente de implementacion: el subsistema back/retrieval/text esta
-        definido como estructura; este handler es el punto de conexion.
-        """
-        raise ExecutionError(
-            "Busqueda textual @@ aun no implementada: conectar back/retrieval/text "
-            "(tokenizer -> spimi/inverted_index -> cosine_ranker -> text_retriever)"
-        )
+        """Recuperacion de texto por similitud de coseno (operador @@)."""
+        table = self.db.get_table(node.table_name)
+        entry = self._find_content_index(table, node.column, "inverted")
+        if entry is None:
+            raise ExecutionError(
+                f"La columna '{node.column}' no tiene un indice INVERTED; "
+                f"crealo con CREATE INDEX ... ON {node.table_name} ({node.column}) USING INVERTED"
+            )
+        documents = None
+        if node.method == "sequential":
+            from ..retrieval.text.tokenizer import Tokenizer
+            tok = entry["retriever"].tokenizer
+            documents = [
+                (rec["record"][table.schema.primary_key],
+                 tok.process(rec["record"].get(node.column) or ""))
+                for rec in table.index.iter_record_refs()
+            ]
+        hits = entry["retriever"].search(node.query_text, node.k, method=node.method, documents=documents)
+        return self._resolve_hits(table, hits)
 
     def _exec_media_search(self, node: MediaSearchNode) -> list:
-        """Recuperacion multimedia por KNN sobre histogramas Bag of Words (operador <->).
+        """Recuperacion multimedia por KNN sobre histogramas Bag of Words (operador <->)."""
+        table = self.db.get_table(node.table_name)
+        entry = self._find_content_index(table, node.column, "multimedia")
+        if entry is None:
+            raise ExecutionError(
+                f"La columna '{node.column}' no tiene un indice MULTIMEDIA; "
+                f"crealo con CREATE INDEX ... ON {node.table_name} ({node.column}) USING MULTIMEDIA"
+            )
+        hits = entry["retriever"].search(node.query_path, node.k, method=node.method)
+        return self._resolve_hits(table, hits)
 
-        Flujo previsto (ver back/retrieval/media/):
-          1. extraer descriptores locales de node.query_path (SIFT imagen / MFCC audio)
-          2. cuantizar contra el vocabulario (codebook) -> histograma BoVW/BoAW
-          3. si node.method == 'sequential' -> sequential_search (fuerza bruta);
-             si no -> histogram_index (KNN indexado con indice invertido de codewords)
-          4. devolver los top-k registros (node.k) resueltos por clave primaria
+    def _find_content_index(self, table, column: str, index_type: str):
+        for entry in table.content_indexes.values():
+            if entry["type"] == index_type and entry["columns"] == [column]:
+                return entry
+        return None
 
-        Pendiente de implementacion: el subsistema back/retrieval/media esta
-        definido como estructura; este handler es el punto de conexion.
-        """
-        raise ExecutionError(
-            "Busqueda multimedia <-> aun no implementada: conectar back/retrieval/media "
-            "(extractor -> vocabulary -> histogram -> sequential_search/histogram_index)"
-        )
+    def _resolve_hits(self, table, hits: list) -> list:
+        """Convierte [(doc_id, score)] en filas completas, agregando _score y _rank."""
+        results = []
+        for rank, (doc_id, score) in enumerate(hits, start=1):
+            record = self.db.resolve_primary_key(table, doc_id)
+            if record is None:
+                continue
+            row = dict(record)
+            row["_score"] = round(float(score), 6)
+            row["_rank"] = rank
+            results.append(row)
+        return results
 
     def _exec_delete(self, node: DeleteNode) -> list:
         """Elimina el registro con la clave dada. Soporta PK, indice secundario y sequential scan."""

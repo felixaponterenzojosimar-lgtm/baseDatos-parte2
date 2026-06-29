@@ -31,6 +31,9 @@ class Table:
         self.primary_constraint_name = primary_constraint_name
         self.secondary_indexes: dict[str, dict] = {}  # index_name -> {"index", "type", "columns", "rel_oid", "storage_name"}
         self.spatial_indexes: dict[str, dict] = {}   # index_name -> {"index", "type", "columns", "rel_oid", "storage_name"}
+        # Indices de recuperacion por contenido (Proyecto 2):
+        #   index_name -> {"retriever", "type": "inverted"|"multimedia", "columns", "storage_name"}
+        self.content_indexes: dict[str, dict] = {}
 
     def __repr__(self):
         return f"Table('{self.name}', {self.schema}, index={type(self.index).__name__})"

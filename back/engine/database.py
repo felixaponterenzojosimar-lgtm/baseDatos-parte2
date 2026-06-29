@@ -115,6 +115,75 @@ class Database:
 
         self._save_catalogs()
 
+    CONTENT_INDEX_TYPES = {"inverted", "multimedia"}
+
+    def add_content_index(
+        self,
+        table_name: str,
+        index_name: str,
+        columns: list,
+        index_type: str,
+        codebook_size: int = 256,
+    ) -> dict:
+        """Construye un indice de recuperacion por contenido sobre las filas actuales.
+
+        - inverted   : indice invertido de TEXTO (SPIMI + coseno) sobre una columna TEXT.
+        - multimedia : Bag of Visual/Acoustic Words + KNN sobre una columna IMAGE/AUDIO.
+
+        El doc_id de cada item es el valor de la clave primaria de la fila.
+        Devuelve un pequeno resumen (conteo de items indexados).
+        """
+        table = self.get_table(table_name)
+        used = set(table.secondary_indexes) | set(table.spatial_indexes) | set(table.content_indexes)
+        if index_name in used:
+            raise ValueError(f"Ya existe un indice llamado '{index_name}' en '{table_name}'")
+        if index_type not in self.CONTENT_INDEX_TYPES:
+            raise ValueError(f"index_type de contenido invalido: '{index_type}'")
+
+        column = columns[0]
+        column_type = next(
+            (c["type"].upper() for c in table.column_definitions if c["name"] == column),
+            None,
+        )
+        index_dir = self._index_base_path(table_name, index_name)  # se usa como carpeta
+        pk = table.schema.primary_key
+
+        # Reune (doc_id, valor_columna) de todas las filas ya cargadas.
+        rows = [
+            (item["record"][pk], item["record"].get(column))
+            for item in table.index.iter_record_refs()
+        ]
+
+        if index_type == "inverted":
+            from ..retrieval.text.text_retriever import TextRetriever
+            from ..retrieval.text.tokenizer import Tokenizer
+
+            retriever = TextRetriever.build(
+                ((doc_id, text or "") for doc_id, text in rows),
+                index_dir,
+                Tokenizer(),
+            )
+            count = len(rows)
+        else:  # multimedia
+            from ..retrieval.media.media_retriever import MediaRetriever
+            if column_type == "IMAGE":
+                from ..retrieval.media.extractors.image_descriptor import ImageDescriptorExtractor
+                extractor = ImageDescriptorExtractor()
+            else:
+                from ..retrieval.media.extractors.audio_descriptor import AudioDescriptorExtractor
+                extractor = AudioDescriptorExtractor()
+            items = [(doc_id, path) for doc_id, path in rows if path]
+            retriever = MediaRetriever.build(items, index_dir, extractor, k=codebook_size)
+            count = len(items)
+
+        table.content_indexes[index_name] = {
+            "retriever": retriever,
+            "type": index_type,
+            "columns": columns,
+            "storage_name": index_name,
+        }
+        return {"indexed_items": count, "index": index_name, "type": index_type}
+
     def drop_secondary_index(self, table_name: str, index_name: str) -> None:
         table = self.get_table(table_name)
         if index_name in table.secondary_indexes:
@@ -599,6 +668,10 @@ class Database:
             return 8
         if column_type == "CHAR":
             return column["size"]
+        if column_type == "TEXT":
+            return 512
+        if column_type in {"IMAGE", "AUDIO"}:
+            return 255
         raise ValueError(f"Tipo de columna desconocido para longitud: '{column['type']}'")
 
     def _column_definition_from_attribute(self, attribute: dict) -> dict:
@@ -666,6 +739,15 @@ class Database:
             elif sql_type == "TIME":
                 fields.append(Field(name, FieldType.VARCHAR, max_length=8))
                 column_definitions.append({"name": name, "type": "TIME"})
+            elif sql_type == "TEXT":
+                # Documento textual: se guarda inline en un VARCHAR amplio.
+                fields.append(Field(name, FieldType.VARCHAR, max_length=512))
+                column_definitions.append({"name": name, "type": "TEXT"})
+            elif sql_type in {"IMAGE", "AUDIO"}:
+                # Multimedia: la columna guarda la RUTA del archivo (los descriptores
+                # viven en el indice de contenido, no en la fila).
+                fields.append(Field(name, FieldType.VARCHAR, max_length=255))
+                column_definitions.append({"name": name, "type": sql_type})
             else:
                 raise ValueError(f"Tipo SQL desconocido: '{sql_type}'")
 
@@ -691,6 +773,10 @@ class Database:
                 fields.append(Field(column["name"], FieldType.VARCHAR, max_length=10))
             elif column_type == "TIME":
                 fields.append(Field(column["name"], FieldType.VARCHAR, max_length=8))
+            elif column_type == "TEXT":
+                fields.append(Field(column["name"], FieldType.VARCHAR, max_length=512))
+            elif column_type in {"IMAGE", "AUDIO"}:
+                fields.append(Field(column["name"], FieldType.VARCHAR, max_length=255))
             else:
                 raise ValueError(f"Tipo de dato invalido en catalogo: '{column['type']}'")
         return Schema(fields, primary_key)
