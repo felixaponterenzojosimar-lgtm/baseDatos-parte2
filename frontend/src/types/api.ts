@@ -37,6 +37,48 @@ export interface TableInfo {
   data_file: string;
   secondary_indexes: IndexInfo[];
   spatial_indexes: IndexInfo[];
+  content_indexes: IndexInfo[];
+}
+
+export interface FsEntry {
+  name: string;
+  path: string;
+}
+
+export interface FsResponse {
+  path: string;
+  parent: string | null;
+  dirs: FsEntry[];
+  media_files: number;
+}
+
+export type SearchHit = Record<string, unknown> & {
+  _score: number;
+  _rank: number;
+};
+
+export interface SearchResponse {
+  rows: SearchHit[];
+  time_ms: number;
+}
+
+export interface EngineMetrics {
+  mean_ms: number;
+  median_ms: number;
+  p95_ms: number;
+  throughput_qps: number | null;
+  precision_at_k: number | null;
+  index_size: number | null;
+}
+
+export interface ExperimentResponse {
+  table: string;
+  column: string;
+  kind: string;
+  top_k: number;
+  queries: number;
+  repeats: number;
+  engines: Record<string, EngineMetrics>;
 }
 
 export interface TableListResponse {

@@ -30,5 +30,21 @@
     "rel_natts": 1,
     "rel_am": "bplus",
     "rel_file_node": "lugares_idx_nombre"
+  },
+  {
+    "oid": 1004,
+    "rel_name": "cancion",
+    "rel_kind": "table",
+    "rel_natts": 3,
+    "rel_am": "bplus",
+    "rel_file_node": "cancion_pk_id"
+  },
+  {
+    "oid": 1005,
+    "rel_name": "pk_cancion_id",
+    "rel_kind": "index",
+    "rel_natts": 1,
+    "rel_am": "bplus",
+    "rel_file_node": "cancion_pk_id"
   }
 ]

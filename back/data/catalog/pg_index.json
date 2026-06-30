@@ -31,5 +31,15 @@
       2
     ],
     "ind_class": "bplus"
+  },
+  {
+    "index_rel_id": 1005,
+    "ind_rel_id": 1004,
+    "ind_is_primary": true,
+    "ind_is_unique": true,
+    "ind_key": [
+      1
+    ],
+    "ind_class": "bplus"
   }
 ]

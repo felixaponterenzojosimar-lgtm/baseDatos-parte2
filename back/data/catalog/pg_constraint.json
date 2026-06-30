@@ -7,5 +7,14 @@
     "con_key": [
       1
     ]
+  },
+  {
+    "con_name": "cancion_pkey",
+    "con_type": "primary_key",
+    "con_rel_id": 1004,
+    "con_ind_id": 1005,
+    "con_key": [
+      1
+    ]
   }
 ]

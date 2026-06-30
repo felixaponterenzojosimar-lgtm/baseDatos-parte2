@@ -1,7 +1,10 @@
 import type {
+  ExperimentResponse,
+  FsResponse,
   MetricsEntry,
   QueryResult,
   RTreePointsResponse,
+  SearchResponse,
   TableListResponse,
 } from "../types/api";
 
@@ -53,4 +56,68 @@ export const api = {
 
   clearMetrics: () =>
     request<{ message: string }>("/metrics", { method: "DELETE" }),
+
+  // ---- Recuperación multimodal (Proyecto 2) ----
+
+  browseFs: (path = "") =>
+    request<FsResponse>(`/fs?path=${encodeURIComponent(path)}`),
+
+  loadFolder: (body: {
+    table: string;
+    folder: string;
+    mapping: Record<string, string>;
+    limit_per_subfolder?: number | null;
+  }) =>
+    request<{ table: string; inserted: number }>("/datasets/load-folder", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  searchText: (body: {
+    table: string;
+    column: string;
+    query: string;
+    k?: number;
+    method?: string | null;
+    genre?: string | null;
+  }) =>
+    request<SearchResponse>("/search/text", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  searchMedia: (
+    file: File,
+    opts: { table: string; column: string; k?: number; method?: string | null; genre?: string | null }
+  ) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("table", opts.table);
+    form.append("column", opts.column);
+    form.append("k", String(opts.k ?? 10));
+    if (opts.method) form.append("method", opts.method);
+    if (opts.genre) form.append("genre", opts.genre);
+    return fetch(`${BASE}/search/media`, { method: "POST", body: form }).then(
+      async (res) => {
+        if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail ?? `HTTP ${res.status}`);
+        return res.json() as Promise<SearchResponse>;
+      }
+    );
+  },
+
+  mediaUrl: (path: string) => `${BASE}/media?path=${encodeURIComponent(path)}`,
+
+  runExperiment: (body: {
+    table: string;
+    column: string;
+    kind: string;
+    engines: string[];
+    top_k: number;
+    queries: number;
+    repeats: number;
+  }) =>
+    request<ExperimentResponse>("/experiments/run", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
