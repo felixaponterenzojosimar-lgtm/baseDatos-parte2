@@ -16,5 +16,14 @@
     "con_key": [
       1
     ]
+  },
+  {
+    "con_name": "products_pkey",
+    "con_type": "primary_key",
+    "con_rel_id": 1008,
+    "con_ind_id": 1009,
+    "con_key": [
+      1
+    ]
   }
 ]

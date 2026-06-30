@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import shutil
 
 from .table import Table
 from ..indexes import BPlusTree, ExtendibleHashing, RTree, SequentialFile
@@ -181,7 +182,9 @@ class Database:
             "type": index_type,
             "columns": columns,
             "storage_name": index_name,
+            "rel_oid": self._allocate_oid(),
         }
+        self._save_catalogs()
         return {"indexed_items": count, "index": index_name, "type": index_type}
 
     def drop_secondary_index(self, table_name: str, index_name: str) -> None:
@@ -190,6 +193,8 @@ class Database:
             del table.secondary_indexes[index_name]
         elif index_name in table.spatial_indexes:
             del table.spatial_indexes[index_name]
+        elif index_name in table.content_indexes:
+            del table.content_indexes[index_name]
         else:
             raise KeyError(f"Indice '{index_name}' no existe en '{table_name}'")
         self._delete_index_files(table_name, index_name)
@@ -232,7 +237,9 @@ class Database:
             if filename.startswith(prefix):
                 filepath = os.path.join(DATA_DIR, filename)
                 try:
-                    if os.path.isfile(filepath):
+                    if os.path.isdir(filepath):
+                        shutil.rmtree(filepath)
+                    elif os.path.isfile(filepath):
                         os.remove(filepath)
                 except OSError:
                     pass
@@ -247,6 +254,12 @@ class Database:
                     os.remove(filepath)
                 except OSError:
                     pass
+        dirpath = os.path.join(DATA_DIR, base_name)
+        if os.path.isdir(dirpath):
+            try:
+                shutil.rmtree(dirpath)
+            except OSError:
+                pass
 
     def _build_index(
         self,
@@ -320,7 +333,7 @@ class Database:
 
         from ..indexes.base_index import DuplicateKeyError
         count = 0
-        with open(filepath, newline="", encoding="utf-8") as handle:
+        with open(filepath, newline="", encoding="utf-8-sig") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
                 record = self._cast_row(row, table.schema)
@@ -455,6 +468,16 @@ class Database:
                         )
                         table.spatial_indexes[index_class["rel_name"]] = {
                             "index": sp_index,
+                            "type": index_entry["ind_class"],
+                            "columns": columns,
+                            "rel_oid": index_class["oid"],
+                            "storage_name": storage_name,
+                        }
+                    elif index_entry.get("ind_is_content", False) or index_entry["ind_class"] in self.CONTENT_INDEX_TYPES:
+                        table.content_indexes[index_class["rel_name"]] = {
+                            "retriever": self._open_content_index(
+                                table_name, storage_name, columns, index_entry["ind_class"], column_definitions,
+                            ),
                             "type": index_entry["ind_class"],
                             "columns": columns,
                             "rel_oid": index_class["oid"],
@@ -618,6 +641,35 @@ class Database:
                     }
                 )
 
+            for index_name, meta in sorted(table.content_indexes.items()):
+                if meta.get("rel_oid") is None:
+                    meta["rel_oid"] = self._allocate_oid()
+                if meta.get("storage_name") is None:
+                    meta["storage_name"] = index_name
+
+                pg_class.append(
+                    {
+                        "oid": meta["rel_oid"],
+                        "rel_name": index_name,
+                        "rel_kind": "index",
+                        "rel_natts": len(meta["columns"]),
+                        "rel_am": meta["type"],
+                        "rel_file_node": self._index_file_node(table.name, meta["storage_name"]),
+                    }
+                )
+                pg_index.append(
+                    {
+                        "index_rel_id": meta["rel_oid"],
+                        "ind_rel_id": table.rel_oid,
+                        "ind_is_primary": False,
+                        "ind_is_unique": False,
+                        "ind_is_spatial": False,
+                        "ind_is_content": True,
+                        "ind_key": [column_number_by_name[column] for column in meta["columns"]],
+                        "ind_class": meta["type"],
+                    }
+                )
+
         pg_class.sort(key=lambda entry: entry["oid"])
         pg_attribute.sort(key=lambda entry: (entry["att_rel_id"], entry["att_num"]))
         pg_index.sort(key=lambda entry: entry["index_rel_id"])
@@ -679,6 +731,31 @@ class Database:
         if attribute["att_type"].upper() == "CHAR":
             column["size"] = attribute["att_len"]
         return column
+
+    def _open_content_index(self, table_name: str, storage_name: str, columns: list,
+                            index_type: str, column_definitions: list):
+        index_dir = self._index_base_path(table_name, storage_name)
+        column = columns[0]
+        column_type = next(
+            (c["type"].upper() for c in column_definitions if c["name"] == column),
+            None,
+        )
+        if index_type == "inverted":
+            from ..retrieval.text.text_retriever import TextRetriever
+            from ..retrieval.text.tokenizer import Tokenizer
+
+            return TextRetriever.open(index_dir, Tokenizer())
+        if index_type == "multimedia":
+            from ..retrieval.media.media_retriever import MediaRetriever
+
+            if column_type == "IMAGE":
+                from ..retrieval.media.extractors.image_descriptor import ImageDescriptorExtractor
+                extractor = ImageDescriptorExtractor()
+            else:
+                from ..retrieval.media.extractors.audio_descriptor import AudioDescriptorExtractor
+                extractor = AudioDescriptorExtractor()
+            return MediaRetriever.open(index_dir, extractor)
+        raise ValueError(f"Tipo de indice de contenido desconocido: '{index_type}'")
 
     def _copy_column_definition(self, column: dict) -> dict:
         copied = {"name": column["name"], "type": column["type"]}

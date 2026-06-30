@@ -178,7 +178,7 @@ class SemanticAnalyzer:
 
         # Verifica que no exista un indice con el mismo nombre en la tabla.
         table = self.db.get_table(node.table_name)
-        all_index_names = set(table.secondary_indexes) | set(table.spatial_indexes)
+        all_index_names = set(table.secondary_indexes) | set(table.spatial_indexes) | set(table.content_indexes)
         if node.index_name in all_index_names:
             self.error_message = f"Ya existe un indice llamado '{node.index_name}' en '{node.table_name}'"
             return False

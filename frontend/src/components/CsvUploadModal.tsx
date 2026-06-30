@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Upload, X, ChevronDown, Plus, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
-type FieldType = "INT" | "REAL" | "CHAR" | "BOOLEAN";
+type FieldType = "INT" | "REAL" | "CHAR" | "BOOLEAN" | "IMAGE";
 
 interface ColumnDef {
   name: string;
@@ -25,7 +25,6 @@ const INDEX_OPTIONS = [
   { value: "bplus",      label: "B+ Tree",           desc: "Búsqueda exacta y por rango" },
   { value: "sequential", label: "Sequential File",    desc: "Rango eficiente, archivo ordenado" },
   { value: "hashing",    label: "Extendible Hashing", desc: "Búsqueda exacta muy rápida" },
-  { value: "rtree",      label: "R-Tree",             desc: "Espacial — requiere columnas lat y lon" },
 ];
 
 function inferType(values: string[]): { type: FieldType; size: number } {
@@ -243,8 +242,9 @@ export function CsvUploadModal({ open, onClose, onSuccess }: Props) {
                         <option value="REAL">REAL</option>
                         <option value="CHAR">CHAR</option>
                         <option value="BOOLEAN">BOOLEAN</option>
+                        <option value="IMAGE">IMAGE</option>
                       </select>
-                      {col.type === "CHAR" ? (
+                      {col.type === "CHAR" || col.type === "IMAGE" ? (
                         <input
                           type="number"
                           min={1} max={255}
@@ -298,7 +298,7 @@ export function CsvUploadModal({ open, onClose, onSuccess }: Props) {
                           onChange={(e) => setSecondaryIndexes((p) => p.map((x, j) => j === i ? { ...x, index_type: e.target.value } : x))}
                           className="appearance-none bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500 pr-6"
                         >
-                          {INDEX_OPTIONS.filter((o) => o.value !== "rtree").map((o) => (
+                          {INDEX_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>{o.label}</option>
                           ))}
                         </select>

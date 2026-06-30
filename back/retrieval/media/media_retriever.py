@@ -80,3 +80,25 @@ class MediaRetriever:
 
         sequential = SequentialSearch(dense, metric="cosine")
         return cls(vocab, extractor, sequential, index, idf)
+
+    @classmethod
+    def open(cls, index_dir: str, extractor) -> "MediaRetriever":
+        """Carga codebook, IDF e indice invertido de histogramas desde disco."""
+        base = Path(index_dir)
+        vocab = Vocabulary.load(base / "codebook.bin")
+        idf = np.load(base / "idf.npy")
+        index = HistogramIndex.load(base / "histogram_index.json")
+        dense = {
+            doc_id: cls._dense_from_sparse(sparse, vocab.k)
+            for doc_id, sparse in index._docs.items()
+        }
+        sequential = SequentialSearch(dense, metric="cosine")
+        return cls(vocab, extractor, sequential, index, idf)
+
+    @staticmethod
+    def _dense_from_sparse(sparse: dict[int, float], k: int) -> np.ndarray:
+        dense = np.zeros(k, dtype=np.float32)
+        for word_id, weight in sparse.items():
+            if 0 <= word_id < k:
+                dense[word_id] = weight
+        return dense

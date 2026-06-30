@@ -79,6 +79,11 @@ class HistogramIndex:
             for w, plist in payload["postings"].items()
         }
         index.norms = {int(d): float(n) for d, n in payload["norms"].items()}
+        docs: dict[int, dict[int, float]] = defaultdict(dict)
+        for word_id, postings in index.postings.items():
+            for doc_id, weight in postings:
+                docs[doc_id][word_id] = weight
+        index._docs = {doc_id: dict(sparse) for doc_id, sparse in docs.items()}
         return index
 
     def index_size_bytes(self) -> int:

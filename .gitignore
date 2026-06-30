@@ -1,5 +1,7 @@
 # Archivos de base de datos (Persistencia)
 *.bin
+!back/data/products_pk_id.bin
+!back/data/products_idx_products_image/codebook.bin
 
 # Python
 __pycache__/
@@ -15,4 +17,9 @@ frontend/dist/
 
 # Entornos Python
 .venv/
+.venv312/
 venv/
+
+# Datasets grandes locales
+fashion-dataset/
+fashion-dataset.zip

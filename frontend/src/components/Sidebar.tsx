@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, ChevronRight, MapPin, RefreshCw, Table2, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, RefreshCw, Table2, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { TableInfo } from "../types/api";
 import { ConfirmModal } from "./ConfirmModal";
@@ -9,7 +9,8 @@ const INDEX_BADGE: Record<string, { label: string; color: string }> = {
   isam:       { label: "ISAM",  color: "#0891b2" },
   bplus:      { label: "B+T",   color: "#16a34a" },
   hash:       { label: "HASH",  color: "#d97706" },
-  rtree:      { label: "RTREE", color: "#7c3aed" },
+  hashing:    { label: "HASH",  color: "#d97706" },
+  multimedia: { label: "IMG",   color: "#0891b2" },
 };
 
 interface Props {
@@ -19,10 +20,9 @@ interface Props {
   onDrop: (name: string) => void;
   onSelectTable: (t: TableInfo) => void;
   selectedTable: string | null;
-  onShowRTree: (name: string) => void;
 }
 
-export function Sidebar({ tables, loading, onRefresh, onDrop, onSelectTable, selectedTable, onShowRTree }: Props) {
+export function Sidebar({ tables, loading, onRefresh, onDrop, onSelectTable, selectedTable }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
@@ -101,8 +101,8 @@ export function Sidebar({ tables, loading, onRefresh, onDrop, onSelectTable, sel
                           <ul className="space-y-0.5 mb-2">
                             {t.columns.map((c) => {
                               const secIdx = t.secondary_indexes?.find(idx => idx.columns.includes(c.name));
-                              const spatIdx = t.spatial_indexes?.find(idx => idx.columns.includes(c.name));
-                              const anyIdx = secIdx ?? spatIdx;
+                              const contentIdx = t.content_indexes?.find(idx => idx.columns.includes(c.name));
+                              const anyIdx = secIdx ?? contentIdx;
                               return (
                                 <li key={c.name} className="flex justify-between text-xs py-0.5 gap-1">
                                   <span className="text-slate-300 truncate">{c.name}</span>
@@ -119,14 +119,6 @@ export function Sidebar({ tables, loading, onRefresh, onDrop, onSelectTable, sel
                             })}
                           </ul>
                           <div className="flex gap-1.5 mt-2">
-                            {(t.spatial_indexes?.length > 0) && (
-                              <button
-                                onClick={() => onShowRTree(t.name)}
-                                className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-slate-600 text-slate-300 hover:border-violet-500 hover:text-violet-400 transition-colors"
-                              >
-                                <MapPin size={11} /> Visualize
-                              </button>
-                            )}
                             <button
                               onClick={() => setDropTarget(t.name)}
                               className="flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-slate-600 text-slate-300 hover:border-red-500 hover:text-red-400 transition-colors"

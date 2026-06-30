@@ -54,5 +54,85 @@
     "att_type": "AUDIO",
     "att_len": 255,
     "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1008,
+    "att_num": 1,
+    "att_name": "id",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": true
+  },
+  {
+    "att_rel_id": 1008,
+    "att_num": 2,
+    "att_name": "name",
+    "att_type": "CHAR",
+    "att_len": 160,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1008,
+    "att_num": 3,
+    "att_name": "gender",
+    "att_type": "CHAR",
+    "att_len": 20,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1008,
+    "att_num": 4,
+    "att_name": "category",
+    "att_type": "CHAR",
+    "att_len": 40,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1008,
+    "att_num": 5,
+    "att_name": "subcategory",
+    "att_type": "CHAR",
+    "att_len": 60,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1008,
+    "att_num": 6,
+    "att_name": "article_type",
+    "att_type": "CHAR",
+    "att_len": 80,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1008,
+    "att_num": 7,
+    "att_name": "color",
+    "att_type": "CHAR",
+    "att_len": 40,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1008,
+    "att_num": 8,
+    "att_name": "season",
+    "att_type": "CHAR",
+    "att_len": 20,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1008,
+    "att_num": 9,
+    "att_name": "usage",
+    "att_type": "CHAR",
+    "att_len": 40,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1008,
+    "att_num": 10,
+    "att_name": "image_path",
+    "att_type": "IMAGE",
+    "att_len": 255,
+    "att_is_primary": false
   }
 ]

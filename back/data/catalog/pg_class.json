@@ -46,5 +46,29 @@
     "rel_natts": 1,
     "rel_am": "bplus",
     "rel_file_node": "cancion_pk_id"
+  },
+  {
+    "oid": 1008,
+    "rel_name": "products",
+    "rel_kind": "table",
+    "rel_natts": 10,
+    "rel_am": "bplus",
+    "rel_file_node": "products_pk_id"
+  },
+  {
+    "oid": 1009,
+    "rel_name": "pk_products_id",
+    "rel_kind": "index",
+    "rel_natts": 1,
+    "rel_am": "bplus",
+    "rel_file_node": "products_pk_id"
+  },
+  {
+    "oid": 1010,
+    "rel_name": "idx_products_image",
+    "rel_kind": "index",
+    "rel_natts": 1,
+    "rel_am": "multimedia",
+    "rel_file_node": "products_idx_products_image"
   }
 ]

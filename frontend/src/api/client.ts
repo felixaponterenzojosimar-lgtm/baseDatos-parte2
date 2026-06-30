@@ -107,6 +107,35 @@ export const api = {
 
   mediaUrl: (path: string) => `${BASE}/media?path=${encodeURIComponent(path)}`,
 
+  uploadQueryImage: async (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE}/media/query-image`, {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(String(body?.detail ?? `HTTP ${res.status}`));
+    }
+    return res.json() as Promise<{ path: string }>;
+  },
+
+  imageUrl: (path: unknown) =>
+    `${BASE}/media/image?path=${encodeURIComponent(String(path ?? ""))}`,
+
+  visualSearch: (params: {
+    table: string;
+    imageColumn: string;
+    queryPath: string;
+    k: number;
+    method: "MULTIMEDIA" | "SEQUENTIAL";
+  }) => {
+    const escapedPath = params.queryPath.replace(/'/g, "''");
+    const sql = `SELECT * FROM ${params.table} WHERE ${params.imageColumn} <-> '${escapedPath}' LIMIT ${params.k} USING ${params.method};`;
+    return api.executeQuery(sql);
+  },
+
   runExperiment: (body: {
     table: string;
     column: string;

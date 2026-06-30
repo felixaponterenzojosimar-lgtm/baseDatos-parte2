@@ -8,9 +8,9 @@ import os
 import tempfile
 import time
 from pathlib import Path as _Path
+from uuid import uuid4
 
 from ..engine import Database, Executor
-from ..concurrency import Scheduler as ConcurrencyScheduler
 from ..parser import Parser, ParseError
 from ..parser.semantic_analyzer import SemanticError
 from ..engine.executor import ExecutionError
@@ -77,10 +77,6 @@ def _table_name_from(node) -> str:
 
 class QueryRequest(BaseModel):
     sql: str
-
-
-class ScheduleRequest(BaseModel):
-    schedule: str
 
 
 # ------------------------------------------------------------------
@@ -241,15 +237,6 @@ def clear_metrics():
     return {"message": "Historial de métricas limpiado"}
 
 
-@app.post("/api/v1/concurrency/simulate")
-def simulate_schedule(req: ScheduleRequest):
-    try:
-        result = ConcurrencyScheduler().simulate(req.schedule)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return result
-
-
 @app.post("/api/v1/tables/upload")
 async def upload_csv_table(
     file: UploadFile = File(...),
@@ -273,6 +260,8 @@ async def upload_csv_table(
             schema_fields.append(Field(fd["name"], FieldType.FLOAT))
         elif ft_str == "BOOLEAN":
             schema_fields.append(Field(fd["name"], FieldType.BOOL))
+        elif ft_str in ("TEXT", "IMAGE", "AUDIO"):
+            schema_fields.append(Field(fd["name"], FieldType.VARCHAR, max_length=int(fd.get("size", 255))))
         else:
             schema_fields.append(Field(fd["name"], FieldType.VARCHAR, max_length=int(fd.get("size", 50))))
 
@@ -293,6 +282,8 @@ async def upload_csv_table(
             field_type = field["type"]
             if field_type == "CHAR":
                 column_definitions.append({"name": field["name"], "type": "CHAR", "size": int(field["size"])})
+            elif field_type in ("TEXT", "IMAGE", "AUDIO"):
+                column_definitions.append({"name": field["name"], "type": field_type})
             else:
                 column_definitions.append({"name": field["name"], "type": field_type})
         table = db.create_table(table_name, schema, column_definitions, index_type)
@@ -397,6 +388,23 @@ def serve_media(path: str):
     if not _within_allowed(target) or not target.is_file():
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     return FileResponse(str(target))
+
+
+@app.get("/api/v1/media/image")
+def serve_media_image(path: str):
+    return serve_media(path)
+
+
+@app.post("/api/v1/media/query-image")
+async def upload_query_image(file: UploadFile = File(...)):
+    ext = _Path(file.filename or "").suffix.lower()
+    if ext not in _IMAGE_EXT:
+        raise HTTPException(status_code=400, detail="Formato de imagen no soportado")
+    query_dir = _Path(DATA_DIR) / "query_images"
+    query_dir.mkdir(parents=True, exist_ok=True)
+    out = query_dir / f"{uuid4().hex}{ext}"
+    out.write_bytes(await file.read())
+    return {"path": out.resolve().as_posix()}
 
 
 @app.post("/api/v1/datasets/load-folder")
