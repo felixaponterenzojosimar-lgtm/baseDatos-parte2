@@ -1,8 +1,25 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { api } from "../api/client";
 
 const PAGE_SIZE = 50;
+
+const AUDIO_EXT = [".wav", ".mp3", ".ogg", ".flac", ".au", ".m4a", ".aac"];
+const IMAGE_EXT = [".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"];
+
+function renderCell(value: unknown) {
+  const s = String(value ?? "");
+  const low = s.toLowerCase();
+  if (AUDIO_EXT.some((e) => low.endsWith(e))) {
+    // Reproductor inline; preload="none" para no cargar todos los audios de golpe.
+    return <audio controls preload="none" src={api.mediaUrl(s)} className="h-8 w-64 max-w-full" />;
+  }
+  if (IMAGE_EXT.some((e) => low.endsWith(e))) {
+    return <img src={api.mediaUrl(s)} alt="" loading="lazy" className="h-14 w-14 object-cover rounded" />;
+  }
+  return s;
+}
 
 interface Props {
   columns: string[];
@@ -87,8 +104,8 @@ export function ResultsTable({ columns, rows }: Props) {
                   }`}
                 >
                   {columns.map((col) => (
-                    <td key={col} className="px-3 py-1.5 whitespace-nowrap max-w-[260px] overflow-hidden text-ellipsis">
-                      {String(row[col] ?? "")}
+                    <td key={col} className="px-3 py-1.5 align-middle max-w-[320px] overflow-hidden text-ellipsis">
+                      {renderCell(row[col])}
                     </td>
                   ))}
                 </motion.tr>
