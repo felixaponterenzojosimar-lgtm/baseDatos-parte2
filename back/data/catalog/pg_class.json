@@ -70,5 +70,21 @@
     "rel_natts": 1,
     "rel_am": "multimedia",
     "rel_file_node": "products_idx_products_image"
+  },
+  {
+    "oid": 1011,
+    "rel_name": "cancion2",
+    "rel_kind": "table",
+    "rel_natts": 60,
+    "rel_am": "bplus",
+    "rel_file_node": "cancion2_pk_filename"
+  },
+  {
+    "oid": 1012,
+    "rel_name": "pk_cancion2_filename",
+    "rel_kind": "index",
+    "rel_natts": 1,
+    "rel_am": "bplus",
+    "rel_file_node": "cancion2_pk_filename"
   }
 ]
