@@ -13,6 +13,7 @@ export function DataLoader({ tables, onChanged }: Props) {
   const [table, setTable] = useState(tables[0]?.name ?? "");
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [limit, setLimit] = useState<string>("");
+  const [copy, setCopy] = useState(true);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -42,10 +43,10 @@ export function DataLoader({ tables, onChanged }: Props) {
     setBusy(true); setMsg("");
     try {
       const res = await api.loadFolder({
-        table, folder: fs.path, mapping,
+        table, folder: fs.path, mapping, copy,
         limit_per_subfolder: limit ? Number(limit) : null,
       });
-      setMsg(`✓ ${res.inserted} filas insertadas en ${table}`);
+      setMsg(`✓ ${res.inserted} filas insertadas en ${table}${res.copied ? " (archivos copiados al proyecto)" : ""}`);
       onChanged();
     } catch (e) { setMsg("Error: " + (e as Error).message); }
     finally { setBusy(false); }
@@ -133,6 +134,10 @@ export function DataLoader({ tables, onChanged }: Props) {
             ))}
           </tbody>
         </table>
+        <label className="flex items-center gap-2 text-xs text-slate-400 mb-2 cursor-pointer">
+          <input type="checkbox" checked={copy} onChange={e=>setCopy(e.target.checked)} />
+          copiar archivos al proyecto (back/data/media) — seguro y portable; si lo desmarcas solo guarda las rutas
+        </label>
         <button onClick={load} disabled={busy || !fs} className="flex items-center gap-1.5 px-4 py-2 text-sm rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50">
           <Upload size={14}/> cargar datos
         </button>

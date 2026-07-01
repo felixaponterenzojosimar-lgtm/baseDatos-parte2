@@ -70,8 +70,9 @@ export const api = {
     folder: string;
     mapping: Record<string, string>;
     limit_per_subfolder?: number | null;
+    copy?: boolean;
   }) =>
-    request<{ table: string; inserted: number }>("/datasets/load-folder", {
+    request<{ table: string; inserted: number; copied: boolean; media_dir: string | null }>("/datasets/load-folder", {
       method: "POST",
       body: JSON.stringify(body),
     }),
