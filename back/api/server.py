@@ -310,19 +310,16 @@ async def upload_csv_table(
 # Recuperacion multimodal (Proyecto 2)
 # ==================================================================
 
-# Raiz permitida para el explorador y para servir media (carpeta 'proyectos').
-_ALLOWED_ROOT = _Path(os.path.dirname(__file__), "..", "..", "..").resolve()
+# Herramienta local: el explorador arranca en el HOME del usuario y permite
+# navegar cualquier carpeta del equipo (sin restringir la ruta).
+_ALLOWED_ROOT = _Path(os.path.expanduser("~")).resolve()
 _IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 _AUDIO_EXT = {".wav", ".mp3", ".flac", ".ogg", ".au", ".m4a"}
 _MEDIA_EXT = _IMAGE_EXT | _AUDIO_EXT
 
 
 def _within_allowed(path: _Path) -> bool:
-    try:
-        path.resolve().relative_to(_ALLOWED_ROOT)
-        return True
-    except ValueError:
-        return False
+    return True
 
 
 def _find_content_index(table, column: str, kinds=("inverted", "multimedia")):
@@ -367,17 +364,24 @@ class FolderLoadRequest(BaseModel):
 
 @app.get("/api/v1/fs")
 def browse_fs(path: str = ""):
-    """Explorador de carpetas para elegir la fuente de datos (restringido a 'proyectos')."""
+    """Explorador de carpetas para elegir la fuente de datos (navega todo el equipo)."""
     base = _Path(path).resolve() if path else _ALLOWED_ROOT
-    if not _within_allowed(base) or not base.is_dir():
-        raise HTTPException(status_code=400, detail="Ruta no permitida o inexistente")
+    if not base.is_dir():
+        raise HTTPException(status_code=400, detail=f"No es una carpeta valida: {path or base}")
+    try:
+        children = sorted(base.iterdir(), key=lambda p: p.name.lower())
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Sin permiso para leer esta carpeta")
     dirs, media_count = [], 0
-    for child in sorted(base.iterdir(), key=lambda p: p.name.lower()):
-        if child.is_dir():
-            dirs.append({"name": child.name, "path": str(child)})
-        elif child.suffix.lower() in _MEDIA_EXT:
-            media_count += 1
-    parent = str(base.parent) if _within_allowed(base.parent) and base != _ALLOWED_ROOT else None
+    for child in children:
+        try:
+            if child.is_dir():
+                dirs.append({"name": child.name, "path": str(child)})
+            elif child.suffix.lower() in _MEDIA_EXT:
+                media_count += 1
+        except (PermissionError, OSError):
+            continue
+    parent = None if base.parent == base else str(base.parent)
     return {"path": str(base), "parent": parent, "dirs": dirs, "media_files": media_count}
 
 

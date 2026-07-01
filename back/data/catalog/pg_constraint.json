@@ -25,5 +25,14 @@
     "con_key": [
       1
     ]
+  },
+  {
+    "con_name": "cancion2_pkey",
+    "con_type": "primary_key",
+    "con_rel_id": 1011,
+    "con_ind_id": 1012,
+    "con_key": [
+      1
+    ]
   }
 ]
