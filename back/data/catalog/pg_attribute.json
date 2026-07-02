@@ -32,30 +32,6 @@
     "att_is_primary": false
   },
   {
-    "att_rel_id": 1004,
-    "att_num": 1,
-    "att_name": "id",
-    "att_type": "INT",
-    "att_len": 4,
-    "att_is_primary": true
-  },
-  {
-    "att_rel_id": 1004,
-    "att_num": 2,
-    "att_name": "genero",
-    "att_type": "CHAR",
-    "att_len": 20,
-    "att_is_primary": false
-  },
-  {
-    "att_rel_id": 1004,
-    "att_num": 3,
-    "att_name": "pista",
-    "att_type": "AUDIO",
-    "att_len": 255,
-    "att_is_primary": false
-  },
-  {
     "att_rel_id": 1008,
     "att_num": 1,
     "att_name": "id",
@@ -132,6 +108,30 @@
     "att_num": 10,
     "att_name": "image_path",
     "att_type": "IMAGE",
+    "att_len": 255,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1013,
+    "att_num": 1,
+    "att_name": "id",
+    "att_type": "INT",
+    "att_len": 4,
+    "att_is_primary": true
+  },
+  {
+    "att_rel_id": 1013,
+    "att_num": 2,
+    "att_name": "genero",
+    "att_type": "CHAR",
+    "att_len": 20,
+    "att_is_primary": false
+  },
+  {
+    "att_rel_id": 1013,
+    "att_num": 3,
+    "att_name": "pista",
+    "att_type": "AUDIO",
     "att_len": 255,
     "att_is_primary": false
   }

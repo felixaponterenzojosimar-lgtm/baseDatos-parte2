@@ -3,7 +3,7 @@ from .ast_nodes import (
     CreateTableNode, CreateIndexNode, DateLiteralNode, TimeLiteralNode, InsertNode,
     SelectAllNode, SelectEqualNode, SelectComparisonNode, SelectRangeNode,
     SelectPointRadiusNode, SelectKNNNode, DeleteNode, DropTableNode, DropIndexNode,
-    ImportFileNode, TextSearchNode, MediaSearchNode,
+    ImportFileNode, TextSearchNode, MediaSearchNode, SelectCountNode,
 )
 
 
@@ -148,6 +148,23 @@ class SyntacticAnalyzer:
 
     def parse_select(self):
         self.expect(TokenType.SELECT)
+
+        # SELECT COUNT(*) FROM tabla [WHERE col = valor]
+        if self.peek().type == TokenType.COUNT:
+            self.advance()
+            self.expect(TokenType.LEFT_PARENTHESIS)
+            self.expect(TokenType.ASTERISK)
+            self.expect(TokenType.RIGHT_PARENTHESIS)
+            self.expect(TokenType.FROM)
+            table_name = self.expect(TokenType.IDENTIFIER).value
+            if self.peek().type != TokenType.WHERE:
+                return SelectCountNode(table_name)
+            self.advance()
+            col = self.expect(TokenType.IDENTIFIER).value
+            self.expect(TokenType.EQUAL)
+            value = self.read_literal()
+            return SelectCountNode(table_name, col, value)
+
         self.expect(TokenType.ASTERISK)
         self.expect(TokenType.FROM)
         table_name = self.expect(TokenType.IDENTIFIER).value

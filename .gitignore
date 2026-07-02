@@ -23,3 +23,6 @@ venv/
 # Datasets grandes locales
 fashion-dataset/
 fashion-dataset.zip
+
+# Tabla cancion2 (experimento local, no se versiona)
+back/data/cancion2*

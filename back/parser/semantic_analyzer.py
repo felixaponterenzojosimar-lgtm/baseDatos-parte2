@@ -19,6 +19,7 @@ from .ast_nodes import (
     TimeLiteralNode,
     TextSearchNode,
     MediaSearchNode,
+    SelectCountNode,
 )
 
 # Tipos de columna de contenido y los indices de recuperacion que admiten.
@@ -105,6 +106,15 @@ class SemanticAnalyzer:
         # Verifica el nodo de busqueda multimedia por KNN (<->).
         if isinstance(node, MediaSearchNode):
             return self.validate_media_search_node(node)
+
+        # Verifica el nodo SELECT COUNT(*).
+        if isinstance(node, SelectCountNode):
+            if node.column is not None:
+                return self.validate_scalar_lookup(node.table_name, node.column)
+            if not self.table_exists(node.table_name):
+                self.error_message = f"La tabla '{node.table_name}' no existe"
+                return False
+            return True
 
         self.error_message = f"No existe verificacion semantica para el nodo {type(node).__name__}"
         return False

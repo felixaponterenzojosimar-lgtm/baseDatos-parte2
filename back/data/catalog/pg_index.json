@@ -33,16 +33,6 @@
     "ind_class": "bplus"
   },
   {
-    "index_rel_id": 1005,
-    "ind_rel_id": 1004,
-    "ind_is_primary": true,
-    "ind_is_unique": true,
-    "ind_key": [
-      1
-    ],
-    "ind_class": "bplus"
-  },
-  {
     "index_rel_id": 1009,
     "ind_rel_id": 1008,
     "ind_is_primary": true,
@@ -61,6 +51,28 @@
     "ind_is_content": true,
     "ind_key": [
       10
+    ],
+    "ind_class": "multimedia"
+  },
+  {
+    "index_rel_id": 1014,
+    "ind_rel_id": 1013,
+    "ind_is_primary": true,
+    "ind_is_unique": true,
+    "ind_key": [
+      1
+    ],
+    "ind_class": "bplus"
+  },
+  {
+    "index_rel_id": 1015,
+    "ind_rel_id": 1013,
+    "ind_is_primary": false,
+    "ind_is_unique": false,
+    "ind_is_spatial": false,
+    "ind_is_content": true,
+    "ind_key": [
+      3
     ],
     "ind_class": "multimedia"
   }

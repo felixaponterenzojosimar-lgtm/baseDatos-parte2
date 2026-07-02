@@ -31,7 +31,12 @@ class AudioDescriptorExtractor:
         try:
             signal, sr = librosa.load(str(audio_path), sr=self.sample_rate,
                                       mono=True, duration=self.max_duration)
+        except (ImportError, ModuleNotFoundError):
+            # Problema de entorno (dependencia faltante): NO lo silenciamos,
+            # así el error es visible en vez de "no se extrajeron descriptores".
+            raise
         except Exception:
+            # Archivo corrupto/ilegible puntual: se omite ese item.
             return np.empty((0, self.n_mfcc), dtype=np.float32)
         if signal.size == 0:
             return np.empty((0, self.n_mfcc), dtype=np.float32)

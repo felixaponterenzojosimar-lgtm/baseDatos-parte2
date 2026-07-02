@@ -91,6 +91,19 @@ class SelectKNNNode:
         self.k = k
 
 
+class SelectCountNode:
+    """SELECT COUNT(*) FROM tabla [WHERE col = valor]
+
+    Devuelve el número de filas (con filtro de igualdad opcional), sin materializar
+    todas las filas.
+    """
+
+    def __init__(self, table_name: str, column: str = None, value=None):
+        self.table_name = table_name
+        self.column = column
+        self.value = value
+
+
 class TextSearchNode:
     """SELECT * FROM tabla WHERE col @@ 'consulta' LIMIT k [USING metodo]
 

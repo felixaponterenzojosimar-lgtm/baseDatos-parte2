@@ -8,7 +8,10 @@ import type {
   TableListResponse,
 } from "../types/api";
 
-const BASE = import.meta.env.VITE_API_URL ?? "/api/v1";
+// Única fuente de la dirección del backend: frontend/.env (VITE_API_URL).
+// El .env guarda solo el destino (http://host:puerto); aquí se agrega el subpath.
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const BASE = `${API_URL}/api/v1`;
 
 async function request<T>(
   path: string,
@@ -67,8 +70,9 @@ export const api = {
     folder: string;
     mapping: Record<string, string>;
     limit_per_subfolder?: number | null;
+    copy?: boolean;
   }) =>
-    request<{ table: string; inserted: number }>("/datasets/load-folder", {
+    request<{ table: string; inserted: number; copied: boolean; media_dir: string | null }>("/datasets/load-folder", {
       method: "POST",
       body: JSON.stringify(body),
     }),
