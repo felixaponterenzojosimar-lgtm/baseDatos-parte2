@@ -32,22 +32,6 @@
     "rel_file_node": "lugares_idx_nombre"
   },
   {
-    "oid": 1004,
-    "rel_name": "cancion",
-    "rel_kind": "table",
-    "rel_natts": 3,
-    "rel_am": "bplus",
-    "rel_file_node": "cancion_pk_id"
-  },
-  {
-    "oid": 1005,
-    "rel_name": "pk_cancion_id",
-    "rel_kind": "index",
-    "rel_natts": 1,
-    "rel_am": "bplus",
-    "rel_file_node": "cancion_pk_id"
-  },
-  {
     "oid": 1008,
     "rel_name": "products",
     "rel_kind": "table",
@@ -72,19 +56,27 @@
     "rel_file_node": "products_idx_products_image"
   },
   {
-    "oid": 1011,
-    "rel_name": "cancion2",
+    "oid": 1013,
+    "rel_name": "cancion",
     "rel_kind": "table",
-    "rel_natts": 60,
+    "rel_natts": 3,
     "rel_am": "bplus",
-    "rel_file_node": "cancion2_pk_filename"
+    "rel_file_node": "cancion_pk_id"
   },
   {
-    "oid": 1012,
-    "rel_name": "pk_cancion2_filename",
+    "oid": 1014,
+    "rel_name": "pk_cancion_id",
     "rel_kind": "index",
     "rel_natts": 1,
     "rel_am": "bplus",
-    "rel_file_node": "cancion2_pk_filename"
+    "rel_file_node": "cancion_pk_id"
+  },
+  {
+    "oid": 1015,
+    "rel_name": "ix_pista",
+    "rel_kind": "index",
+    "rel_natts": 1,
+    "rel_am": "multimedia",
+    "rel_file_node": "cancion_ix_pista"
   }
 ]

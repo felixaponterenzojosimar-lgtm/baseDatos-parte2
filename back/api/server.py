@@ -13,6 +13,7 @@ from uuid import uuid4
 from ..engine import Database, Executor
 from ..parser import Parser, ParseError
 from ..parser.semantic_analyzer import SemanticError
+from ..parser.lexical_analyzer import LexError
 from ..engine.executor import ExecutionError
 from ..indexes import SequentialFile, ExtendibleHashing, BPlusTree, RTree
 from ..storage.schema import Field, FieldType, Schema
@@ -21,7 +22,7 @@ from ..parser.ast_nodes import SelectPointRadiusNode, SelectKNNNode
 from ..parser.ast_nodes import (
     CreateTableNode, CreateIndexNode, InsertNode, SelectAllNode, SelectEqualNode,
     SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
-    DropTableNode, DropIndexNode, ImportFileNode,
+    DropTableNode, DropIndexNode, ImportFileNode, SelectCountNode,
 )
 
 app = FastAPI(title="Mini-SGBD API")
@@ -55,6 +56,7 @@ _NODE_OP = {
     SelectRangeNode:       "SELECT RANGE",
     SelectPointRadiusNode: "SELECT RADIUS",
     SelectKNNNode:         "SELECT KNN",
+    SelectCountNode:       "SELECT COUNT",
     DeleteNode:            "DELETE",
 }
 
@@ -87,7 +89,7 @@ class QueryRequest(BaseModel):
 def run_query(req: QueryRequest):
     try:
         node = parser.parse(req.sql)
-    except (ParseError, SemanticError) as e:
+    except (ParseError, SemanticError, LexError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     try:
@@ -310,19 +312,16 @@ async def upload_csv_table(
 # Recuperacion multimodal (Proyecto 2)
 # ==================================================================
 
-# Raiz permitida para el explorador y para servir media (carpeta 'proyectos').
-_ALLOWED_ROOT = _Path(os.path.dirname(__file__), "..", "..", "..").resolve()
+# Herramienta local: el explorador arranca en el HOME del usuario y permite
+# navegar cualquier carpeta del equipo (sin restringir la ruta).
+_ALLOWED_ROOT = _Path(os.path.expanduser("~")).resolve()
 _IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 _AUDIO_EXT = {".wav", ".mp3", ".flac", ".ogg", ".au", ".m4a"}
 _MEDIA_EXT = _IMAGE_EXT | _AUDIO_EXT
 
 
 def _within_allowed(path: _Path) -> bool:
-    try:
-        path.resolve().relative_to(_ALLOWED_ROOT)
-        return True
-    except ValueError:
-        return False
+    return True
 
 
 def _find_content_index(table, column: str, kinds=("inverted", "multimedia")):
@@ -363,21 +362,29 @@ class FolderLoadRequest(BaseModel):
     folder: str
     mapping: dict           # columna -> "file_path"|"subfolder"|"filename"|"autoincrement"|"empty"
     limit_per_subfolder: int | None = None
+    copy: bool = True        # copia los archivos a back/data/media/<tabla>/ (seguro/portable)
 
 
 @app.get("/api/v1/fs")
 def browse_fs(path: str = ""):
-    """Explorador de carpetas para elegir la fuente de datos (restringido a 'proyectos')."""
+    """Explorador de carpetas para elegir la fuente de datos (navega todo el equipo)."""
     base = _Path(path).resolve() if path else _ALLOWED_ROOT
-    if not _within_allowed(base) or not base.is_dir():
-        raise HTTPException(status_code=400, detail="Ruta no permitida o inexistente")
+    if not base.is_dir():
+        raise HTTPException(status_code=400, detail=f"No es una carpeta valida: {path or base}")
+    try:
+        children = sorted(base.iterdir(), key=lambda p: p.name.lower())
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Sin permiso para leer esta carpeta")
     dirs, media_count = [], 0
-    for child in sorted(base.iterdir(), key=lambda p: p.name.lower()):
-        if child.is_dir():
-            dirs.append({"name": child.name, "path": str(child)})
-        elif child.suffix.lower() in _MEDIA_EXT:
-            media_count += 1
-    parent = str(base.parent) if _within_allowed(base.parent) and base != _ALLOWED_ROOT else None
+    for child in children:
+        try:
+            if child.is_dir():
+                dirs.append({"name": child.name, "path": str(child)})
+            elif child.suffix.lower() in _MEDIA_EXT:
+                media_count += 1
+        except (PermissionError, OSError):
+            continue
+    parent = None if base.parent == base else str(base.parent)
     return {"path": str(base), "parent": parent, "dirs": dirs, "media_files": media_count}
 
 
@@ -422,10 +429,29 @@ def load_folder(req: FolderLoadRequest):
     if not _within_allowed(base) or not base.is_dir():
         raise HTTPException(status_code=400, detail="Carpeta no permitida o inexistente")
 
+    import shutil
     from ..indexes.base_index import DuplicateKeyError
     pk = table.schema.primary_key
     next_id = 1
     inserted = 0
+
+    # Carpeta gestionada por el backend: los archivos se copian aqui para que la
+    # coleccion sea auto-contenida (no depende de que el dataset externo siga ahi).
+    media_root = _Path(DATA_DIR) / "media" / req.table
+
+    def store_media(f: _Path, subfolder: str) -> str:
+        """Devuelve la ruta a usar en la columna: copia al proyecto si copy=True."""
+        if not req.copy:
+            return str(f.resolve())
+        dest_dir = media_root / (subfolder or "_")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / f.name
+        if not dest.exists() or dest.stat().st_size == 0:
+            try:
+                shutil.copy2(str(f), str(dest))
+            except OSError:
+                return str(f.resolve())
+        return str(dest.resolve())
 
     def media_files():
         subdirs = [d for d in sorted(base.iterdir()) if d.is_dir()]
@@ -442,10 +468,11 @@ def load_folder(req: FolderLoadRequest):
                     yield f, ""
 
     for f, subfolder in media_files():
+        media_path = store_media(f, subfolder)
         record = {}
         for column, source in req.mapping.items():
             if source == "file_path":
-                record[column] = str(f.resolve())
+                record[column] = media_path
             elif source == "subfolder":
                 record[column] = subfolder
             elif source == "filename":
@@ -470,7 +497,12 @@ def load_folder(req: FolderLoadRequest):
         next_id += 1
         inserted += 1
 
-    return {"table": req.table, "inserted": inserted}
+    return {
+        "table": req.table,
+        "inserted": inserted,
+        "copied": req.copy,
+        "media_dir": str(media_root) if req.copy else None,
+    }
 
 
 @app.post("/api/v1/search/text")

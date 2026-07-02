@@ -9,15 +9,6 @@
     ]
   },
   {
-    "con_name": "cancion_pkey",
-    "con_type": "primary_key",
-    "con_rel_id": 1004,
-    "con_ind_id": 1005,
-    "con_key": [
-      1
-    ]
-  },
-  {
     "con_name": "products_pkey",
     "con_type": "primary_key",
     "con_rel_id": 1008,
@@ -27,10 +18,10 @@
     ]
   },
   {
-    "con_name": "cancion2_pkey",
+    "con_name": "cancion_pkey",
     "con_type": "primary_key",
-    "con_rel_id": 1011,
-    "con_ind_id": 1012,
+    "con_rel_id": 1013,
+    "con_ind_id": 1014,
     "con_key": [
       1
     ]

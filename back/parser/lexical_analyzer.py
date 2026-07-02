@@ -6,7 +6,7 @@ class TokenType(Enum):
     CREATE = auto(); TABLE = auto(); FROM = auto(); FILE = auto()
     IMPORT = auto()
     DROP = auto()
-    SELECT = auto(); WHERE = auto()
+    SELECT = auto(); WHERE = auto(); COUNT = auto()
     INSERT = auto(); INTO = auto(); VALUES = auto()
     DELETE = auto(); INDEX = auto()
     POINT = auto(); RADIUS = auto(); K = auto()
@@ -62,7 +62,7 @@ _KEYWORDS: dict[str, TokenType] = {
     "DROP": TokenType.DROP,
     "IMPORT": TokenType.IMPORT,
     "FROM": TokenType.FROM, "FILE": TokenType.FILE,
-    "SELECT": TokenType.SELECT, "WHERE": TokenType.WHERE,
+    "SELECT": TokenType.SELECT, "WHERE": TokenType.WHERE, "COUNT": TokenType.COUNT,
     "BETWEEN": TokenType.BETWEEN, "AND": TokenType.AND,
     "INSERT": TokenType.INSERT, "INTO": TokenType.INTO,
     "VALUES": TokenType.VALUES, "DELETE": TokenType.DELETE,
@@ -134,6 +134,13 @@ class LexicalAnalyzer:
             if ch in " \t\r\n":
                 self.read_whitespace()
                 continue
+
+            # Comentario SQL de línea: -- hasta el fin de línea (se ignora).
+            if ch == "-" and self.peek(self.pos + 1) == "-":
+                while self.pos < len(self.sql) and self.sql[self.pos] != "\n":
+                    self.pos += 1
+                continue
+
             if not self.is_valid_character(ch):
                 raise LexError(f"Carácter inesperado '{ch}' en línea {self.line}")
 

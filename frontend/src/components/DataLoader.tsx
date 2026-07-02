@@ -9,15 +9,23 @@ const SOURCES = ["file_path", "subfolder", "filename", "autoincrement", "empty"]
 
 export function DataLoader({ tables, onChanged }: Props) {
   const [fs, setFs] = useState<FsResponse | null>(null);
+  const [pathInput, setPathInput] = useState("");
   const [table, setTable] = useState(tables[0]?.name ?? "");
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [limit, setLimit] = useState<string>("");
+  const [copy, setCopy] = useState(true);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
   const current = tables.find(t => t.name === table);
 
-  useEffect(() => { api.browseFs("").then(setFs).catch(e => setMsg(String(e.message))); }, []);
+  function goTo(path: string) {
+    setMsg("");
+    api.browseFs(path).then(r => { setFs(r); setPathInput(r.path); })
+      .catch(e => setMsg("Error: " + String(e.message)));
+  }
+
+  useEffect(() => { goTo(""); }, []);
   useEffect(() => {
     if (!current) return;
     const m: Record<string, string> = {};
@@ -35,10 +43,10 @@ export function DataLoader({ tables, onChanged }: Props) {
     setBusy(true); setMsg("");
     try {
       const res = await api.loadFolder({
-        table, folder: fs.path, mapping,
+        table, folder: fs.path, mapping, copy,
         limit_per_subfolder: limit ? Number(limit) : null,
       });
-      setMsg(`✓ ${res.inserted} filas insertadas en ${table}`);
+      setMsg(`✓ ${res.inserted} filas insertadas en ${table}${res.copied ? " (archivos copiados al proyecto)" : ""}`);
       onChanged();
     } catch (e) { setMsg("Error: " + (e as Error).message); }
     finally { setBusy(false); }
@@ -80,17 +88,27 @@ export function DataLoader({ tables, onChanged }: Props) {
           </div>
         </div>
 
-        <label className="text-xs text-slate-400 block mb-1">carpeta de archivos</label>
+        <label className="text-xs text-slate-400 block mb-1">carpeta de archivos — pega una ruta o navega</label>
+        <div className="flex gap-2 mb-2">
+          <input
+            value={pathInput}
+            onChange={e => setPathInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") goTo(pathInput); }}
+            placeholder="C:\\Users\\...\\gtzan\\Data\\genres_original"
+            className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-100 font-mono"
+          />
+          <button onClick={() => goTo(pathInput)} className="px-3 py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-700 text-white">ir</button>
+        </div>
         <div className="bg-slate-900 border border-slate-700 rounded-lg p-2 mb-3">
           <div className="flex items-center gap-1 text-xs text-slate-400 mb-2 flex-wrap">
             <Folder size={13} className="text-blue-400" />
             <span className="truncate">{fs?.path ?? "…"}</span>
-            {fs?.parent && <button onClick={()=>api.browseFs(fs.parent!).then(setFs)} className="ml-2 text-slate-500 hover:text-slate-200">↑ subir</button>}
+            {fs?.parent && <button onClick={()=>goTo(fs.parent!)} className="ml-2 text-slate-500 hover:text-slate-200">↑ subir</button>}
             <span className="ml-auto text-slate-500">{fs?.media_files ?? 0} archivos media aquí</span>
           </div>
           <div className="flex flex-wrap gap-1.5 max-h-40 overflow-auto">
             {fs?.dirs.map(d => (
-              <button key={d.path} onClick={()=>api.browseFs(d.path).then(setFs)}
+              <button key={d.path} onClick={()=>goTo(d.path)}
                 className="flex items-center gap-1 text-xs px-2 py-1 rounded border border-slate-700 text-slate-300 hover:border-blue-500">
                 <Folder size={12} className="text-amber-400"/> {d.name} <ChevronRight size={11} className="text-slate-600"/>
               </button>
@@ -116,6 +134,10 @@ export function DataLoader({ tables, onChanged }: Props) {
             ))}
           </tbody>
         </table>
+        <label className="flex items-center gap-2 text-xs text-slate-400 mb-2 cursor-pointer">
+          <input type="checkbox" checked={copy} onChange={e=>setCopy(e.target.checked)} />
+          copiar archivos al proyecto (back/data/media) — seguro y portable; si lo desmarcas solo guarda las rutas
+        </label>
         <button onClick={load} disabled={busy || !fs} className="flex items-center gap-1.5 px-4 py-2 text-sm rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50">
           <Upload size={14}/> cargar datos
         </button>

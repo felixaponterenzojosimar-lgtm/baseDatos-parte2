@@ -6,6 +6,7 @@ from ..parser.ast_nodes import (
     CreateTableNode, CreateIndexNode, InsertNode, SelectAllNode, SelectEqualNode,
     SelectComparisonNode, SelectRangeNode, SelectPointRadiusNode, SelectKNNNode, DeleteNode,
     DropTableNode, DropIndexNode, ImportFileNode, TextSearchNode, MediaSearchNode,
+    SelectCountNode,
 )
 
 
@@ -48,6 +49,7 @@ class Executor:
             SelectRangeNode:       self._exec_select_range,
             SelectPointRadiusNode: self._exec_select_point_radius,
             SelectKNNNode:         self._exec_select_knn,
+            SelectCountNode:       self._exec_select_count,
             TextSearchNode:        self._exec_text_search,
             MediaSearchNode:       self._exec_media_search,
             DeleteNode:            self._exec_delete,
@@ -263,6 +265,18 @@ class Executor:
             refs = spatial_entry["index"].knn(node.point, node.k)
             return [self.db.resolve_primary_key(table, ref) for ref in refs]
         raise ExecutionError(f"La tabla '{node.table_name}' no tiene un indice espacial")
+
+    def _exec_select_count(self, node: SelectCountNode) -> list:
+        """SELECT COUNT(*) FROM tabla [WHERE col = valor]. Devuelve [{'count': n}]."""
+        table = self.db.get_table(node.table_name)
+        records = self._scan_all_records(table)
+        if node.column is not None:
+            field = table.schema.get_field(node.column)
+            key = self._cast_value(node.value, field)
+            count = sum(1 for r in records if r.get(node.column) == key)
+        else:
+            count = len(records)
+        return [{"count": count}]
 
     # ------------------------------------------------------------------
     # Recuperacion por contenido (Proyecto 2) -- puntos de integracion
