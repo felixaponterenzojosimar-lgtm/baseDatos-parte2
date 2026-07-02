@@ -21,7 +21,32 @@
 }
 
 /* ── Monaco wrapper ─────────────────────────────────────── */
-.monaco-wrapper { height: 180px; }
+.terminal-resizer {
+  height: 8px;
+  cursor: row-resize;
+  background: #0f172a;
+  border-top: 1px solid #334155;
+  border-bottom: 1px solid #1e293b;
+  position: relative;
+}
+.terminal-resizer::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  width: 48px;
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: 9999px;
+  background: #475569;
+}
+.terminal-resizer:hover::before {
+  background: #38bdf8;
+}
+.monaco-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+}
 
 /* ── Scrollbar ──────────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 5px; height: 5px; }

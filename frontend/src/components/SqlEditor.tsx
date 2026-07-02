@@ -18,9 +18,9 @@ export function SqlEditor({ value, onChange, onRun, loading }: Props) {
   }
 
   return (
-    <div className="shrink-0 border-b border-slate-700">
+    <div className="flex min-h-0 flex-1 flex-col border-b border-slate-700">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-slate-800 border-b border-slate-700">
+      <div className="flex shrink-0 items-center justify-between px-3 py-1.5 bg-slate-800 border-b border-slate-700">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">SQL Editor</span>
         <span className="text-[10px] text-slate-500">Ctrl+Enter to run</span>
       </div>
@@ -28,7 +28,7 @@ export function SqlEditor({ value, onChange, onRun, loading }: Props) {
       {/* Monaco */}
       <div className="monaco-wrapper">
         <Editor
-          height="180px"
+          height="100%"
           defaultLanguage="sql"
           theme="vs-dark"
           value={value}
@@ -47,7 +47,7 @@ export function SqlEditor({ value, onChange, onRun, loading }: Props) {
       </div>
 
       {/* Run button */}
-      <div className="flex items-center gap-3 px-3 py-2 bg-slate-800">
+      <div className="flex shrink-0 items-center gap-3 px-3 py-2 bg-slate-800">
         <button
           onClick={onRun}
           disabled={loading || !value.trim()}

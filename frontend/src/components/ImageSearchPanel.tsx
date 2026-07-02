@@ -102,7 +102,7 @@ export function ImageSearchPanel({ tables, loading, onSearchResult, onSqlGenerat
 
   if (!productTables.length) {
     return (
-      <div className="flex h-full items-center justify-center p-8 text-center text-slate-500">
+      <div className="flex min-h-[320px] items-center justify-center p-8 text-center text-slate-500">
         <div className="max-w-md space-y-3">
           <ImagePlus size={36} className="mx-auto" />
           <p className="text-sm text-slate-300">No IMAGE product table found.</p>
@@ -113,7 +113,7 @@ export function ImageSearchPanel({ tables, loading, onSearchResult, onSqlGenerat
   }
 
   return (
-    <div className="h-full overflow-auto border-b border-slate-700 bg-slate-900">
+    <div className="border-b border-slate-700 bg-slate-900">
       <div className="grid gap-4 p-4 lg:grid-cols-[320px_1fr]">
         <section className="rounded border border-slate-700 bg-slate-800">
           <div className="border-b border-slate-700 px-4 py-3">
@@ -238,9 +238,9 @@ export function ImageSearchPanel({ tables, loading, onSearchResult, onSqlGenerat
           <div className="border-b border-slate-700 px-4 py-3">
             <div className="text-sm font-semibold text-slate-100">Query Preview</div>
           </div>
-          <div className="grid gap-4 p-4 md:grid-cols-[240px_1fr]">
+          <div className="grid gap-4 p-4 md:grid-cols-[240px_minmax(0,1fr)]">
             <ProductImage path={queryPath} alt="Query" className="aspect-square w-full rounded border border-slate-700" />
-            <div className="space-y-3 text-sm text-slate-300">
+            <div className="min-w-0 space-y-3 text-sm text-slate-300">
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <span className="text-slate-500">Table</span>
                 <span className="truncate text-slate-200">{selectedTable?.name}</span>
@@ -255,7 +255,7 @@ export function ImageSearchPanel({ tables, loading, onSearchResult, onSqlGenerat
                 key={buildSql()}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="max-h-32 overflow-auto rounded bg-slate-950 p-3 text-xs text-slate-400"
+                className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-950 p-3 text-xs text-slate-400"
               >
                 {buildSql()}
               </motion.pre>

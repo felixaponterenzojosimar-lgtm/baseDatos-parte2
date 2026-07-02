@@ -11,7 +11,7 @@ import {
   Terminal,
   Upload,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { CsvUploadModal } from "./components/CsvUploadModal";
 import { DataLoader } from "./components/DataLoader";
 import { ExperimentRunner } from "./components/ExperimentRunner";
@@ -41,10 +41,12 @@ export default function App() {
   const [sql, setSql] = useState("");
   const [tab, setTab] = useState<Tab>("visual");
   const [termOpen, setTermOpen] = useState(true);
+  const [terminalHeight, setTerminalHeight] = useState(270);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [csvModalOpen, setCsvModalOpen] = useState(false);
   const [visualResult, setVisualResult] = useState<QueryResult | null>(null);
   const [visualImageColumn, setVisualImageColumn] = useState<string | null>(null);
+  const resizeStart = useRef<{ y: number; height: number } | null>(null);
 
   const { result, error, loading, execute } = useQuery();
   const { tables, loading: tablesLoading, refresh, drop: dropTable } = useTables();
@@ -70,6 +72,26 @@ export default function App() {
     setVisualResult(nextResult);
     setVisualImageColumn(imageColumn);
     setTab("visual");
+  }
+
+  function startTerminalResize(event: React.PointerEvent<HTMLDivElement>) {
+    if (!termOpen) return;
+    event.preventDefault();
+    resizeStart.current = { y: event.clientY, height: terminalHeight };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function resizeTerminal(event: React.PointerEvent<HTMLDivElement>) {
+    if (!resizeStart.current) return;
+    const delta = resizeStart.current.y - event.clientY;
+    const maxHeight = Math.round(window.innerHeight * 0.58);
+    const nextHeight = Math.min(Math.max(resizeStart.current.height + delta, 150), maxHeight);
+    setTerminalHeight(nextHeight);
+  }
+
+  function stopTerminalResize(event: React.PointerEvent<HTMLDivElement>) {
+    resizeStart.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
   const shownResult = tab === "visual" ? visualResult : result;
@@ -149,7 +171,7 @@ export default function App() {
           ))}
         </div>
 
-        <div className="flex-1 overflow-auto relative">
+        <div className="min-h-0 flex-1 overflow-hidden relative">
           <AnimatePresence mode="wait">
             <motion.div
               key={tab}
@@ -161,7 +183,7 @@ export default function App() {
             >
               {tab === "datos" && <DataLoader tables={tables} onChanged={refresh} />}
               {tab === "visual" && (
-                <div className="flex h-full flex-col">
+                <div className="min-h-full">
                   <ImageSearchPanel
                     tables={tables}
                     loading={tablesLoading}
@@ -169,7 +191,7 @@ export default function App() {
                     onSqlGenerated={setSql}
                     onRefreshTables={refresh}
                   />
-                  <div className="min-h-0 flex-1 border-t border-slate-700">
+                  <div className="border-t border-slate-700">
                     <ProductResultsGrid rows={visualResult?.rows ?? []} imageColumn={visualImageColumn} />
                   </div>
                 </div>
@@ -182,7 +204,21 @@ export default function App() {
           </AnimatePresence>
         </div>
 
-        <div className="shrink-0 border-t border-slate-700 bg-slate-800">
+        <div
+          className="terminal-resizer shrink-0"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize SQL terminal"
+          onPointerDown={startTerminalResize}
+          onPointerMove={resizeTerminal}
+          onPointerUp={stopTerminalResize}
+          onPointerCancel={stopTerminalResize}
+        />
+
+        <div
+          className="shrink-0 border-t border-slate-700 bg-slate-800 flex flex-col"
+          style={termOpen ? { height: terminalHeight } : undefined}
+        >
           <div className="flex items-center px-3 py-1.5 border-b border-slate-700/60">
             <button
               onClick={() => setTermOpen((open) => !open)}

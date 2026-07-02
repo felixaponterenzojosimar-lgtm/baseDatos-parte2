@@ -24,7 +24,7 @@ function formatScore(value: unknown) {
 export function ProductResultsGrid({ rows, imageColumn }: Props) {
   if (!rows.length) {
     return (
-      <div className="flex h-full items-center justify-center text-slate-500 text-sm">
+      <div className="flex min-h-[260px] items-center justify-center text-slate-500 text-sm">
         <div className="flex flex-col items-center gap-2">
           <PackageSearch size={32} />
           <span>No visual search results yet.</span>
@@ -34,8 +34,8 @@ export function ProductResultsGrid({ rows, imageColumn }: Props) {
   }
 
   return (
-    <div className="h-full overflow-auto p-4">
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
+    <div className="p-4">
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))" }}>
         {rows.map((row, index) => {
           const title = pickTitle(row);
           return (
